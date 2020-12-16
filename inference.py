@@ -14,14 +14,15 @@ class MassModel(cpnest.model.Model):
     names = ['M1']
     bounds = [[3,50]]
     
-    def __init__(self, samples, *args, **kwargs):
+    def __init__(self, events, *args, **kwargs):
     
         super(MassModel,self).__init__()
         
-        self.samples    = samples # list of lists?
-        self.N          = len(self.samples)
-        self.prior      = # inserire funzione di densità del prior
-        self.likelihood = # inserire funzione di densità della likelihood
+        mean  = (bounds[0][1]+bounds[0][0])/2.
+        sigma = (bounds[0][1]-bounds[0][0])/6.
+        
+        self.events     = events # list of likelihood_DP?
+        self.prior      = lk.DP_prior([mean, sigma])# inserire funzione di densità del prior
         
     def log_prior(self, x):
         logP = np.log(self.prior(x['M1']))
@@ -29,6 +30,10 @@ class MassModel(cpnest.model.Model):
     
     def log_likelihood(self, x):
         logL = 0.
-        for sample in self.samples:
-            logL += self.likelihood(sample)
-        
+        for event in self.events:
+                logL += event.density(x['M1'])
+        return logL
+
+if __name__ == '__main__':
+    
+    
