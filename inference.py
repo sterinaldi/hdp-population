@@ -42,6 +42,10 @@ if __name__ == '__main__':
     config.read('config.ini')
     opts   = config['DEFAULT']
     output = opts['output']
+    if opts['nthreads'] == 'None':
+        nthreads = None
+    else:
+        nthreads = int(opts['threads'])
     
     events = []
     events_list = os.listdir(opts['events_dir'])
@@ -52,12 +56,12 @@ if __name__ == '__main__':
     M = MassModel(events)
     
     work = cpnest.CPNest(M,
-                        verbose      = 3,
-                        poolsize     = opts.poolsize,
-                        nthreads     = opts.threads,
-                        nlive        = opts.nlive,
-                        maxmcmc      = opts.maxmcmc,
-                        output       = opts.output,
+                        verbose      = int(opts['verbose']),
+                        poolsize     = int(opts['poolsize']),
+                        nthreads     = nthreads,
+                        nlive        = int(opts['nlive']),
+                        maxmcmc      = int(opts['maxmcmc']),
+                        output       = output,
                         nhamiltonian = 0)
     work.run()
     print('log Evidence {0]'.format(work.NS.logZ))
