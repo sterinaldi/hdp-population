@@ -51,7 +51,7 @@ if __name__ == '__main__':
     events_list = os.listdir(opts['events_dir'])
     for event in events_list:
         samples = np.genfromtxt(opts['events_dir']+event)
-        events.append(lk.likelihood_DP(samples, [], lambda x: 1))
+        events.append(lk.likelihood_DP(samples, [], G0 = lambda x: 1))
     
     M = MassModel(events)
     
