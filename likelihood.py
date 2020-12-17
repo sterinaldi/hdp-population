@@ -3,7 +3,7 @@ from numpy.random import rand, normal
 from random import choice
 
 def Gaussian(x0, mu, sigma):
-    return np.exp((x0-mu)**2/(2*sigma**2))/(np.sqrt(2*np.pi)*sigma)
+    return np.exp(-(x0-mu)**2/(2*sigma**2))/(np.sqrt(2*np.pi)*sigma)
 
 class prior_DP:
     
