@@ -19,7 +19,7 @@ class prior_DP:
             self.G0 = normal # a simple choice
     
     def density(self, x):
-        prob = self.alpha/(self.alpha + self.n_pts) * G0(x,*pars)
+        prob = self.alpha/(self.alpha + self.n_pts) * self.G0(x,*pars)
         if x in self.pts:
             prob += self.pts.count(x)/(self.alpha + self.n_pts)
         self.pts.append(x)
@@ -43,7 +43,7 @@ class likelihood_DP:
             self.G = normal # a simple choice
 
     def density(self, x):
-        prob = self.alpha/(self.alpha + self.n_samples) * G(x,*pars)
+        prob = self.alpha/(self.alpha + self.n_samples) * self.G(x,*pars)
         if x in self.pts:
             prob += self.pts.count(x)/(self.alpha + self.n_samples)
         return prob
