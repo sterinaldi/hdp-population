@@ -2,6 +2,9 @@ import numpy as np
 from numpy.random import rand, normal
 from random import choice
 
+def Gaussian(x0, mu, sigma):
+    return np.exp((x0-mu)**2/(2*sigma**2))/(np.sqrt(2*np.pi)*sigma)
+
 class prior_DP:
     
     def __init__(self,
@@ -16,7 +19,7 @@ class prior_DP:
         if G0 is not None:
             self.G0 = G0
         else:
-            self.G0 = normal # a simple choice
+            self.G0 = Gaussian # a simple choice
     
     def density(self, x):
         prob = self.alpha/(self.alpha + self.n_pts) * self.G0(x,*self.pars)
@@ -40,7 +43,7 @@ class likelihood_DP:
         if G is not None:
             self.G = G
         else:
-            self.G = normal # a simple choice
+            self.G = Gaussian # a simple choice
 
     def density(self, x):
         prob = self.alpha/(self.alpha + self.n_samples) * self.G(x,*self.pars)
