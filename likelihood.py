@@ -33,17 +33,17 @@ class likelihood_DP:
                 G = None,
                 alpha = 1
                 ):
-        self.pars    = pars
-        self.samples =
-        self.alpha   = alpha
-        self.n_pts   = 0
+        self.pars      = pars
+        self.samples   = samples
+        self.alpha     = alpha
+        self.n_samples = len(samples)
         if G is not None:
             self.G = G
         else:
             self.G = normal # a simple choice
 
     def density(self, x):
-        prob = self.alpha/(self.alpha + self.n_pts) * G(x,*pars)
+        prob = self.alpha/(self.alpha + self.n_samples) * G(x,*pars)
         if x in self.pts:
-            prob += self.pts.count(x)/(self.alpha + self.n_pts)
+            prob += self.pts.count(x)/(self.alpha + self.n_samples)
         return prob
