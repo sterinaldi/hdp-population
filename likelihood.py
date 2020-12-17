@@ -47,6 +47,6 @@ class likelihood_DP:
 
     def density(self, x):
         prob = self.alpha/(self.alpha + self.n_samples) * self.G(x,*self.pars)
-        if x in self.pts:
-            prob += self.pts.count(x)/(self.alpha + self.n_samples)
+        if x in self.samples:
+            prob += self.samples.count(x)/(self.alpha + self.n_samples)
         return prob
