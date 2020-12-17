@@ -8,6 +8,8 @@ import corner
 import itertools as it
 import likelihood as lk
 import math
+import configparser
+from cpnest import nest2pos
 
 class MassModel(cpnest.model.Model):
     
@@ -31,9 +33,45 @@ class MassModel(cpnest.model.Model):
     def log_likelihood(self, x):
         logL = 0.
         for event in self.events:
-                logL += event.density(x['M1'])
+                logL += np.log(event.density(x['M1']))
         return logL
 
 if __name__ == '__main__':
+    
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    opts   = config['DEFAULT']
+    output = opts['output']
+    
+    events = []
+    events_list = os.listdir(opts['events_dir'])
+    for event in events_list:
+        samples = np.genfromtxt(event)
+        events.append(likelihood_DP(samples, [], lambda x: 1))
+    
+    M = MassModel(events)
+    
+    work = cpnest.CPNest(M,
+                        verbose      = 3,
+                        poolsize     = opts.poolsize,
+                        nthreads     = opts.threads,
+                        nlive        = opts.nlive,
+                        maxmcmc      = opts.maxmcmc,
+                        output       = opts.output,
+                        nhamiltonian = 0)
+    work.run()
+    print('log Evidence {0]'.format(work.NS.logZ))
+    
+    # output
+    x = work.posterior_samples.ravel()
+    samps = np.column_stack((x['h']))
+    fig = corner.corner(samps,
+                        labels = [r'$M_1\ [M_\\odot]$'],
+                        show_titles = True,
+                        title_kwargs={"fontsize": 12},
+                        use_math_text=True,
+                        filename=os.path.join(output,'joint_posterior.pdf')
+                        )
+    fig.savefig(os.path.join(output,'joint_posterior.pdf'), bbox_inches='tight')
     
     
