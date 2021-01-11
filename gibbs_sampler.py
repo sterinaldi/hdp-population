@@ -119,6 +119,8 @@ class gibbs_sampler:
             self.tables[event_index][component_index] = self.components.index(new_component)
         
         return
+    
+    def
 
     def evaluate_probability_t(self, table, component, component_index, sample_index, event_index):
         n = self.table_index[event_index].count(table)
