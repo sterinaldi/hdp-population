@@ -9,12 +9,12 @@ class gibbs_sampler:
     def __init__(self,
                  samples,
                  mass_boundaries,
-                 sigma_boundaries,
                  n_draws,
                  burnin,
                  step,
                  alpha0,
                  gamma,
+                 sigma_boundaries = [5,20],
                  output_folder = os.getcwd(),
                  n_resamples = 250):
         
@@ -204,8 +204,20 @@ class gibbs_sampler:
         self.means  = np.array(self.resampled_bins).mean(axis = 1)
         self.errors = np.array(self.resampled_bins).std(axis = 1)
         return
-    
+        
+    def display_config(self):
+        print('MCMC Gibbs sampler')
+        print('------------------------')
+        print('Loaded {0} events'.format(len(self.samples)))
+        print('Mass interval: {0}-{1} Msun'.format(*self.mass_boundaries))
+        print('Concentration parameters:\n\talpha0 = {0}\n\tgamma = {1}'.format(self.alpha0, self.gamma))
+        print('Burn-in: {0} samples'.format(self.burnin))
+        print('Samples: {0} - 1 every {1}'.format(self.n_draws, self.step))
+        print('Number of re-samples using Bootstrap technique: {0}'.formt(self.n_resamples))
+        print('------------------------')
+        
     def run(self):
+        self.display_config()
         self.run_sampling()
         np.savetxt(self.output+'/mass_samples.txt', self.mass_samples)
         
