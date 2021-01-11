@@ -94,15 +94,25 @@ class gibbs_sampler:
                     self.components.append(new_component)
                 self.tables[event_index].append(self.component.index(new_component))
             self.table_index[event_index][sample_index] = new_t
+            
+            if self.table_index[event_index].count(old_t) == 0:
+                old_component_index = self.tables[event_index][old_t]
+                del self.tables[event_index][old_t]
+                if np.sum([table.count(old_component_index) for table in self.tables]) == 0:
+                    del self.components[old_component_index]
+                    self.tables = [[x-1 if x > old_component_index else x for x in table] for table in self.tables]
+                self.table_index[event_index] = [x-1 if x > old_t else x for x in self.table_index[event_index]]
+                    
         
         return
         
     def update_component(self, component_index, event_index):
         
-        flag_newcomponent = False
-        old_component = self.tables[event_index][component_index]
+        flag_newcomponent   = False
+        old_component_index = self.tables[event_index][component_index]
+        old_component       = self.components[old_component_index]
         
-        if uniform() < self.gammma/(self.gamma+len(self.components)):
+        if uniform() < self.gamma/(self.gamma+len(self.components)):
             new_component     = [self.draw_mass, self.draw_sigma]
             flag_newcomponent = True
             p_new = self.evaluate_probability_component(new_component, -1, event_index, self.samples[event_index])
@@ -110,14 +120,15 @@ class gibbs_sampler:
             new_component = self.components[rd.choice(rd.choice(self.tables))]
             p_new = self.evaluate_probability_component(new_component, self.components.index(new_component), event_index, self.samples[event_index])
         
-        p_old = self.evaluate_probability_component(old_component, component_index, event_index, self.samples[event_index])
-        
+        p_old = self.evaluate_probability_component(old_component, old_component_index, event_index, self.samples[event_index])
         
         if p_new/p_old > uniform():
             if flag_newcomponent:
                 self.components.append(new_component)
             self.tables[event_index][component_index] = self.components.index(new_component)
-        
+            if np.sum([table.count(old_component_index) for table in self.tables]) == 0:
+                del self.components[old_component_index]
+                self.tables = [[x-1 if x > old_component_index else x for x in table] for table in self.tables]å
         return
 
     def evaluate_probability_t(self, table, component, component_index, sample_index, event_index):
