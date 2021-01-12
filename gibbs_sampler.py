@@ -55,7 +55,6 @@ class gibbs_sampler:
         
         self.mass_samples = []
         self.initialise_tables()
-        
         return
         
         
@@ -114,8 +113,6 @@ class gibbs_sampler:
                     del self.components[old_component_index]
                     self.tables = [[x-1 if x > old_component_index else x for x in table] for table in self.tables]
                 self.table_index[event_index] = [x-1 if x > old_t else x for x in self.table_index[event_index]]
-                    
-        
         return
         
     def update_component(self, component_index, event_index):
@@ -215,7 +212,22 @@ class gibbs_sampler:
         print('Samples: {0} - 1 every {1}'.format(self.n_draws, self.step))
         print('Number of re-samples using Bootstrap technique: {0}'.formt(self.n_resamples))
         print('------------------------')
-        
+        return
+    
+    def plot_samples(self):
+        app = np.linspace(self.min_m, max_m, 1000)
+        for samples, table_i, table, i in zip(self.samples, self.table_index, self.tables, range(len(self.samples))):
+            fig = plt.figure()
+            fig.suptitle('Event {0}'.format(i))
+            ax  = fig.add_subplot(111)
+            ax.hist(samples, bins = 'auto', density = True, color = 'lightblue')
+            t = set(table_i)
+            components = [self.components[table[t_i]] for t_i in t]
+            ax.plot(app, np.sum([normal_density(app, *component) * table_i.count(t_i)/len(table_i) for component, t_i in zip(components, t)]), c = 'r')
+            ax.set_xlabel('$M_1\ [M_\\odot]$')
+            ax.set_ylabel('$p(M)$')
+            plt.savefig(self.output_events + '/event_{0}.txt'.format(i), bbox_inches = 'tight')
+            
     def run(self):
         self.display_config()
         self.run_sampling()
@@ -238,6 +250,13 @@ class gibbs_sampler:
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output+'/distribution.pdf', bbox_inches = 'tight')
+        
+        # reconstructed events
+        self.output_events = self.output + '/reconstructed_events'
+        if not os.path.exists(self.output_events):
+            os.mkdir(self.output_events)
+        self.plot_samples()
+        return
     
     def postprocessing(self, samples_file = None, bootstrapping = False):
         if samples_file is not None:
@@ -261,3 +280,4 @@ class gibbs_sampler:
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output+'/distribution.pdf', bbox_inches = 'tight')
+        return
