@@ -8,13 +8,13 @@ class gibbs_sampler:
     
     def __init__(self,
                  samples,
-                 mass_boundaries,
+                 mass_b,
                  n_draws,
                  burnin,
                  step,
                  alpha0,
                  gamma,
-                 sigma_boundaries = [5,20],
+                 sigma_b = [2,20],
                  output_folder = os.getcwd(),
                  n_resamples = 250):
         
@@ -24,10 +24,10 @@ class gibbs_sampler:
         for i in range(len(samples)):
             self.table_index.append(np.zeros(len(samples[i])))
             
-        self.max_m     = max(mass_boundaries)
-        self.min_m     = min(mass_boundaries)
-        self.max_sigma = max(sigma_boundaries)
-        self.min_sigma = min(sigma_boundaries)
+        self.max_m     = max(mass_b)
+        self.min_m     = min(mass_b)
+        self.max_sigma = max(sigma_b)
+        self.min_sigma = min(sigma_b)
         
         tables = []
         for i in range(len(samples)):
