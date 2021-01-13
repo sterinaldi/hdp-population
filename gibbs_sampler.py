@@ -3,14 +3,14 @@ from numpy.random import uniform
 import numpy.random as rd
 import matplotlib.pyplot as plt
 import os
-import ray
+#import ray
 
-@ray.remote
+#@ray.remote
 class gibbs_sampler:
 
     """
     MCMC Gibbs sampler: Hierarchical Dirichlet Process
-    Based on Teh et al (2006), sec. 5.1, follows the same notation.
+    Based on Teh et al. (2006), sec. 5.1, follows the same notation.
     https://www.researchgate.net/publication/4742259_Hierarchical_Dirichlet_Processes
     ------------------
     Arguments:
@@ -42,8 +42,9 @@ class gibbs_sampler:
         bootstrap:                      Error estimation using Bootstrap technique.
         display_config:                 Prints configuration parameters.
         plot_samples:                   Plots x_i samples histogram along with inferred posterior distribution.
-        run:                            Runs the analysis.
+        run:                            Runs the analysis. This and postprocessing() are potentially the only 'external' methods.
         postprocessing:                 Postprocesses pre-generated data.
+        get_mass_samples:               Returns mass samples. Solves Ray usage issues.
     ------------------
     Usage example:
     
@@ -277,17 +278,17 @@ class gibbs_sampler:
     def run_sampling(self):
         for i in range(self.burnin):
             self.markov_step()
-            if verbose:
+            if self.verbose:
                 print('\rBURN-IN: {0}/{1}'.format(i+1, self.burnin), end = '')
-        if verbose:
+        if self.verbose:
             print('\n', end = '')
         for i in range(self.n_draws):
-            if verbose:
+            if self.verbose:
                 print('\rSAMPLING: {0}/{1}'.format(i+1, self.n_draws), end = '')
             for j in range(self.step):
                 self.markov_step()
             self.save_mass_samples()
-        if verbose:
+        if self.verbose:
             print('\n', end = '')
         self.mass_samples = np.array([m for draw in self.mass_samples for m in draw])
         return
@@ -302,10 +303,10 @@ class gibbs_sampler:
     def bootstrap(self):
         self.resampled_bins = []
         for i in range(self.n_resamples):
-            if verbose:
+            if self.verbose:
                 print('\rBOOTSTRAP: {0}/{1}'.format(i+1, self.n_resamples), end = '')
             self.single_bootstrap()
-        if verbose:
+        if self.verbose:
             print('\n', end = '')
         self.means  = np.array(self.resampled_bins).mean(axis = 0)
         self.errors = np.array(self.resampled_bins).std(axis = 0)
@@ -340,13 +341,7 @@ class gibbs_sampler:
     def run(self):
         if self.verbose:
             self.display_config()
-        try:
-            self.run_sampling()
-        except:
-            np.savetxt(self.output_folder+'/mass_samples.txt', self.mass_samples)
-            print('Something went wrong!')
-            return
-            
+        self.run_sampling()
         np.savetxt(self.output_folder+'/mass_samples.txt', self.mass_samples)
         # samples
         fig = plt.figure(1)
@@ -427,3 +422,6 @@ class gibbs_sampler:
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_folder+'/distribution.pdf', bbox_inches = 'tight')
         return
+
+    def get_mass_samples(self):
+        return self.mass_samples
