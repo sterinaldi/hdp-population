@@ -7,25 +7,70 @@ import ray
 
 @ray.remote
 class gibbs_sampler:
+
     """
-    Gibbs sampler: Hierarchical Dirichlet Process
-    Based on Teh et al (2006), sec. 5.1, it follows the same notation.
+    MCMC Gibbs sampler: Hierarchical Dirichlet Process
+    Based on Teh et al (2006), sec. 5.1, follows the same notation.
     https://www.researchgate.net/publication/4742259_Hierarchical_Dirichlet_Processes
     ------------------
-    Parameters:
-        :np.array samples:  (n,m) shaped array containing n events, each of them with m samples
-        :list mass_b:       upper and lower prior mass boundaries
-        :int n_draws:       number of generated samples
-        :int burnin:        number of discarded samples (thermalization)
-        :int step:          number of markov steps between two subsequent samples (avoids autocorrelation)
-        :int alpha0:        concentration parameter for inner DP (DPGMM)
-        :int gamma:         concentration parameter for outer DP (mass function
-        :list sigma_b:      upper and lower prior mass boundaries
-        :str output_folder: output folder
-        :int n_resamples:   number of bootstrap draws
-        :method 
+    Arguments:
+        :np.array samples:        (n,m) shaped array containing n events, each of them with m samples x_i.
+        :list mass_b:             Upper and lower prior mass boundaries.
+        :int n_draws:             Number of generated samples.
+        :int burnin:              Number of discarded samples (thermalization).
+        :int step:                Number of markov steps between two subsequent samples (avoids autocorrelation).
+        :int alpha0:              Concentration parameter for inner DP (DPGMM).
+        :int gamma:               Concentration parameter for outer DP (mass function).
+        :list sigma_b:            Upper and lower prior mass boundaries.
+        :str output_folder        Output folder.
+        :int n_resamples:         Number of bootstrap draws.
+        :method injected_density: Injected probability density function, used for plotting purposes only. Optional.
+        :bool verbose:            Printing statuts, default is True. Meant to be turned off while parallelizing.
+    ------------------
+    Methods:
+        initalise_tables:               Draws a random mixture component for each sample x_i (n*m components).
+        update_table:                   Markov step for a specific sample point.
+        update_component:               Markov step for a specific mixture component.
+        evaluate_probability_t:         Probability of drawing x_i given the fact that it belongs to a table t.
+        evaluate_probability_component: Probability of drawing (x_i,...,x_k) given the fact that these samples belong to the table t.
+        evaluate_probability_sample:    Probability of drawing x_i marginalized over all the possible components.
+        normal_density:                 Normal probability density function.
+        markov_step:                    Generates next MC point.
+        save_mass_samples:              Saves generated mass samples in an appropriate list.
+        run_sampling:                   Runs sampling process.
+        single_bootstrap:               Single run of Bootstrap resampling algorithm for error estimation.
+        bootstrap:                      Error estimation using Bootstrap technique.
+        display_config:                 Prints configuration parameters.
+        plot_samples:                   Plots x_i samples histogram along with inferred posterior distribution.
+        run:                            Runs the analysis.
+        postprocessing:                 Postprocesses pre-generated data.
+    ------------------
+    Usage example:
     
+    import gibbs_sampler as GS
+    from somewhere import normal
+    
+    events = []
+    for event in event_folder:
+        events.append(np.genfromtxt(events_path+event))
+    output = '/some/output/path'
+    mu     = 20.
+    sigma  = 3.
+    
+    sampler = GS.gibbs_sampler.remote(samples = events,
+                                      mass_b  = [5,50],
+                                      n_draws = 1000,
+                                      burnin  = 1000,
+                                      step    = 10,
+                                      alpha0  = 10,
+                                      gamma   = 10,
+                                      output_folder = output,
+                                      verbose = True,
+                                      injected_density = lambda x : normal(x, mu, sigma)
+                                      )
+    sampler.run()
     """
+    
     def __init__(self,
                  samples,
                  mass_b,
