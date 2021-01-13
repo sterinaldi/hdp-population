@@ -46,4 +46,4 @@ for s in S:
     print('success!')
 np.savetxt(output+'/mass_samples.txt', np.array([m for s in samp for m in s.mass_samples]))
 # producing combined posterior plots
-samp[0].postprocessing('/Users/stefanorinaldi/Documents/mass_inference/multivariate-event/mass_samples.txt', bootstrapping = True)
+samp[0].postprocessing(output+'/mass_samples.txt', bootstrapping = True)
