@@ -43,7 +43,7 @@ for i in range(n_parallels):
 pool = ActorPool(samp)
 S = pool.map_unordered(lambda a, _ : a.run.remote(), range(4))
 for s in S:
-    print('success!')
+    print('Done')
 np.savetxt(output+'/mass_samples.txt', np.array([m for s in samp for m in s.mass_samples]))
 # producing combined posterior plots
 samp[0].postprocessing(output+'/mass_samples.txt', bootstrapping = True)
