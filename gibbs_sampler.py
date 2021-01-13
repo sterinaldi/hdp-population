@@ -3,9 +3,29 @@ from numpy.random import uniform
 import numpy.random as rd
 import matplotlib.pyplot as plt
 import os
+import ray
 
+@ray.remote
 class gibbs_sampler:
+    """
+    Gibbs sampler: Hierarchical Dirichlet Process
+    Based on Teh et al (2006), sec. 5.1, it follows the same notation.
+    https://www.researchgate.net/publication/4742259_Hierarchical_Dirichlet_Processes
+    ------------------
+    Parameters:
+        :np.array samples:  (n,m) shaped array containing n events, each of them with m samples
+        :list mass_b:       upper and lower prior mass boundaries
+        :int n_draws:       number of generated samples
+        :int burnin:        number of discarded samples (thermalization)
+        :int step:          number of markov steps between two subsequent samples (avoids autocorrelation)
+        :int alpha0:        concentration parameter for inner DP (DPGMM)
+        :int gamma:         concentration parameter for outer DP (mass function
+        :list sigma_b:      upper and lower prior mass boundaries
+        :str output_folder: output folder
+        :int n_resamples:   number of bootstrap draws
+        :method 
     
+    """
     def __init__(self,
                  samples,
                  mass_b,
@@ -17,7 +37,8 @@ class gibbs_sampler:
                  sigma_b = [np.log(2),np.log(6)],
                  output_folder = './',
                  n_resamples = 250,
-                 injected_density = None):
+                 injected_density = None,
+                 verbose = True):
         
         self.samples     = samples
         self.table_index  = []
@@ -54,10 +75,14 @@ class gibbs_sampler:
         self.step        = step        # steps between two outcomes (avoids autocorrelation)
         self.n_resamples = n_resamples # bootstrap resamplings
         
-        self.output_folder = output_folder
+        self.output_folder    = output_folder
         self.injected_density = injected_density
+        self.verbose          = verbose
         
         self.mass_samples = []
+        self.acceptance_table = []
+        self.acceptance_component = []
+        
         self.initialise_tables()
         return
         
@@ -81,15 +106,18 @@ class gibbs_sampler:
         
         flag_newtable     = False
         flag_newcomponent = False
-        
-        # Choosing between new t and old t
+    
         old_t         = int(self.table_index[event_index][sample_index])
         old_component = self.components[self.tables[event_index][old_t]]
         old_f         = self.normal_density(self.samples[event_index][sample_index], *old_component)
- 
-        if uniform() < self.alpha0/(self.alpha0 + len(self.samples[event_index])):
+    
+        # Generating new table
+        
+        # Deciding between choosing from existing tables or laying a new table
+        if uniform() < self.alpha0/(self.alpha0 + len(self.tables[event_index])):
             new_t = int(max(self.table_index[event_index]) + 1)
             flag_newtable = True
+            # If new table is instanciated, choose if sampling from existing parameters of generating a new set
             if uniform() < self.gamma/(self.gamma+len(self.components)):
                 new_component     = [self.draw_mass(), self.draw_sigma()]
                 flag_newcomponent = True
@@ -106,7 +134,15 @@ class gibbs_sampler:
             p_new = self.evaluate_probability_t(new_t, new_component, -1, sample_index, event_index, old_f, new_f)
             
         p_old = self.evaluate_probability_t(old_t, old_component, self.components.index(old_component), sample_index, event_index, old_f, old_f)
+        
+        # taking care of issue during burn-in (random draw of samples results in 0/0 probability ratio -> accept change)
+        if p_old == 0.:
+            p_new = 1.
+            p_old = 0.5
+            
+        # acceptance probability
         if p_new/p_old > uniform():
+            self.accept_table += 1.
             if flag_newtable:
                 if flag_newcomponent:
                     self.components.append(new_component)
@@ -144,6 +180,7 @@ class gibbs_sampler:
             p_old = 0.5
         
         if p_new/p_old > uniform():
+            self.accept_component += 1.
             if flag_newcomponent:
                 self.components.append(new_component)
             self.tables[event_index][component_index] = self.components.index(new_component)
@@ -155,9 +192,9 @@ class gibbs_sampler:
     def evaluate_probability_t(self, table, component, component_index, sample_index, event_index, old_f, new_f):
         n = self.table_index[event_index].count(table)
         if n == 0:
-            return self.alpha0 * (self.evaluate_probability_sample(self.samples[event_index][sample_index], old_f, new_f))* self.evaluate_probability_component(component, component_index, event_index, [self.samples[event_index][sample_index]])
+            return self.alpha0 * (self.evaluate_probability_sample(self.samples[event_index][sample_index], old_f, new_f))
         else:
-            return n * self.normal_density(self.samples[event_index][sample_index], *component)
+            return (n-1) * self.normal_density(self.samples[event_index][sample_index], *component)
         
     def evaluate_probability_component(self, component, component_index, event_index, sample_array):
         n = sum(table.count(component_index) for table in self.tables)
@@ -174,11 +211,19 @@ class gibbs_sampler:
     
     
     def markov_step(self):
+        self.accept_table     = 0.
+        self.accept_component = 0.
+        tries_table    = 0.
+        tries_component = 0.
         for event_index in range(len(self.samples)):
             for sample_index in range(len(self.samples[event_index])):
                 self.update_table(sample_index, event_index)
+                tries_table += 1.
             for component_index in range(len(self.tables[event_index])):
                 self.update_component(component_index, event_index)
+                tries_component += 1.
+        self.acceptance_table.append(self.accept_table/tries_table)
+        self.acceptance_component.append(self.accept_component/tries_component)
         return
     
     def save_mass_samples(self):
@@ -187,19 +232,24 @@ class gibbs_sampler:
     def run_sampling(self):
         for i in range(self.burnin):
             self.markov_step()
-            print('\rBURN-IN: {0}/{1}'.format(i+1, self.burnin), end = '')
-        print('\n', end = '')
+            if verbose:
+                print('\rBURN-IN: {0}/{1}'.format(i+1, self.burnin), end = '')
+        if verbose:
+            print('\n', end = '')
         for i in range(self.n_draws):
-            print('\rSAMPLING: {0}/{1}'.format(i+1, self.n_draws), end = '')
+            if verbose:
+                print('\rSAMPLING: {0}/{1}'.format(i+1, self.n_draws), end = '')
             for j in range(self.step):
                 self.markov_step()
             self.save_mass_samples()
-        print('\n', end = '')
+        if verbose:
+            print('\n', end = '')
         self.mass_samples = np.array([m for draw in self.mass_samples for m in draw])
         return
     
     def single_bootstrap(self):
-        samples = rd.choice(self.mass_samples, len(self.mass_samples))
+        indexes = rd.randint(low = 0, high = len(self.mass_samples), size = int(len(self.mass_samples)/4))
+        samples = [self.mass_samples[i] for i in indexes]
         heights, bins, patches = plt.hist(samples, bins = self.bins, density = True)
         self.resampled_bins.append(heights)
         return
@@ -207,9 +257,11 @@ class gibbs_sampler:
     def bootstrap(self):
         self.resampled_bins = []
         for i in range(self.n_resamples):
-            print('\rBOOTSTRAP: {0}/{1}'.format(i+1, self.n_resamples), end = '')
+            if verbose:
+                print('\rBOOTSTRAP: {0}/{1}'.format(i+1, self.n_resamples), end = '')
             self.single_bootstrap()
-        print('\n', end = '')
+        if verbose:
+            print('\n', end = '')
         self.means  = np.array(self.resampled_bins).mean(axis = 0)
         self.errors = np.array(self.resampled_bins).std(axis = 0)
         return
@@ -230,7 +282,7 @@ class gibbs_sampler:
         app = np.linspace(self.min_m, self.max_m, 1000)
         for samples, table_i, table, i in zip(self.samples, self.table_index, self.tables, range(len(self.samples))):
             fig = plt.figure()
-            fig.suptitle('Event {0}'.format(i))
+            fig.suptitle('Event {0}'.format(i+1))
             ax  = fig.add_subplot(111)
             ax.hist(samples, bins = int(np.sqrt(len(samples))), density = True, color = 'lightblue')
             t = set(table_i)
@@ -241,10 +293,16 @@ class gibbs_sampler:
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(i+1), bbox_inches = 'tight')
             
     def run(self):
-        self.display_config()
-        self.run_sampling()
+        if self.verbose:
+            self.display_config()
+        try:
+            self.run_sampling()
+        except:
+            np.savetxt(self.output_folder+'/mass_samples.txt', self.mass_samples)
+            print('Something went wrong!')
+            return
+            
         np.savetxt(self.output_folder+'/mass_samples.txt', self.mass_samples)
-        
         # samples
         fig = plt.figure(1)
         ax  = fig.add_subplot(111)
@@ -277,6 +335,20 @@ class gibbs_sampler:
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
         self.plot_samples()
+        
+        # acceptance
+        fig = plt.figure()
+        ax1 = fig.add_subplot(211)
+        ax2 = fig.add_subplot(212)
+        fig.suptitle('Acceptance')
+        ax1.plot(self.acceptance_table, marker = ',', ls = '')
+        ax2.plot(self.acceptance_component, marker = ',', ls = '')
+        ax1.axvline(self.burnin, ls = '-.', lw = 0.3, color = 'r')
+        ax2.axvline(self.burnin, ls = '-.', lw = 0.3, color = 'r')
+        ax2.set_xlabel('Iteration')
+        ax1.set_ylabel('Table')
+        ax2.set_ylabel('Component')
+        plt.savefig(self.output_folder+'/acceptance.pdf', bbox_inches = 'tight')
         return
     
     def postprocessing(self, samples_file = None, bootstrapping = False):
