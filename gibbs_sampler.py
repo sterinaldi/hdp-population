@@ -386,6 +386,7 @@ class gibbs_sampler:
                 print('\rBURN-IN: {0}/{1}'.format(i+1, self.burnin), end = '')
         if self.verbose:
             print('\n', end = '')
+        print('burnin: done')
         for i in range(self.n_draws):
             if self.verbose:
                 print('\rSAMPLING: {0}/{1}'.format(i+1, self.n_draws), end = '')
