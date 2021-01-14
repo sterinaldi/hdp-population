@@ -3,10 +3,10 @@ import os
 import gibbs_sampler as GS
 import ray
 
-events_path = '/Users/stefanorinaldi/Documents/mass_inference/multivariate-event/events/'
+events_path = '/home/srinaldi/mass_inference/multivariate-25-35/events/'
 event_files = [f for f in os.listdir(events_path) if not f.startswith('.')]
 events      = []
-output      = '/Users/stefanorinaldi/Documents/mass_inference/multivariate-event'
+output      = '/home/srinaldi/mass_inference/multivariate-25-35'
 
 for event in event_files:
     events.append(np.genfromtxt(events_path+event))
@@ -21,18 +21,18 @@ def wrapper(sampler):
 
 ray.init()
 pars = [25,4]
-pars_1 = [15, 2]
-pars_2 = [35, 3]
+pars_1 = [25, 3]
+pars_2 = [35, 2]
 
 samplers = []
-n_parallel_jobs = 4
+n_parallel_jobs = 10
 
 for i in range(n_parallel_jobs):
     samplers.append(GS.gibbs_sampler(samples = events,
                         mass_b  = [5,50],
-                        n_draws = 10,
-                        burnin  = 100,
-                        step    = 10,
+                        n_draws = 100,
+                        burnin  = 10000,
+                        step    = 100,
                         alpha0  = 10,
                         gamma   = 10,
                         output_folder = output,
