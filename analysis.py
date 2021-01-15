@@ -30,7 +30,7 @@ n_parallel_jobs = 30
 for i in range(n_parallel_jobs):
     samplers.append(GS.gibbs_sampler(samples = events,
                         mass_b  = [5,50],
-                        n_draws = 40,
+                        n_draws = 100,
                         burnin  = 10000,
                         step    = 100,
                         alpha0  = 10,
