@@ -45,6 +45,7 @@ tasks = []
 for sampler in samplers:
     tasks.append(wrapper.remote(sampler))
 mass_samples = [m for list in ray.get(tasks) for m in list]
-np.savetxt(output+'/mass_samples.txt', np.array([mass_samples]))
+print('{0} sampled pts'.format(len(mass_samples)))
+np.savetxt(output+'/mass_samples.txt', np.array([mass_samples]).T)
 # producing combined posterior plots
 samplers[0].postprocessing(output+'/mass_samples.txt', bootstrapping = True)
