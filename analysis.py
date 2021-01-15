@@ -25,12 +25,12 @@ pars_1 = [25, 3]
 pars_2 = [35, 2]
 
 samplers = []
-n_parallel_jobs = 10
+n_parallel_jobs = 30
 
 for i in range(n_parallel_jobs):
     samplers.append(GS.gibbs_sampler(samples = events,
                         mass_b  = [5,50],
-                        n_draws = 100,
+                        n_draws = 40,
                         burnin  = 10000,
                         step    = 100,
                         alpha0  = 10,
