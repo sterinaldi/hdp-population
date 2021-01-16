@@ -14,6 +14,7 @@ def draw_sample(mu1, mu2, s1, s2):
             return m
 
 out_dir   = '/home/srinaldi/mass_inference/multivariate-25-35/events/'
+out_plot  = '/home/srinaldi/mass_inference/multivariate-25-35/'
 n_events  = 10
 n_samples = 100
 alpha     = 100
@@ -36,3 +37,11 @@ for i in range(n_events):
     mu.append(pars[0])
     np.savetxt(out_dir+'event_{0}.txt'.format(i+1), np.array(samples))
     samples = []
+
+fig = plt.figure()
+ax  = fig.add_subplot(111)
+ax.hist(samples, bins = np.linspace(5,50, 201))
+ax.set_xlabel('$M_1\ [M_\\odot]$')
+plt.savefig(out_plot + 'M1_events.pdf', bbox_inches = 'tight')
+
+np.savetxt(out_plot + 'M1_events.txt', np.array(mu))
