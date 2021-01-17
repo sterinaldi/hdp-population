@@ -15,12 +15,14 @@ def draw_sample(mu1, mu2, s1, s2):
 
 out_dir   = '/home/srinaldi/mass_inference/multivariate-25-35/events/'
 out_plot  = '/home/srinaldi/mass_inference/multivariate-25-35/'
-n_events  = 10
+n_events  = 100
 n_samples = 100
 alpha     = 100
 pars      = [25,4]
 samples = []
 
+if not os.path.exists(out_plot):
+    os.mkdir(out_plot)
 if not os.path.exists(out_dir):
     os.mkdir(out_dir)
 
@@ -40,8 +42,8 @@ for i in range(n_events):
 
 fig = plt.figure()
 ax  = fig.add_subplot(111)
-ax.hist(samples, bins = np.linspace(5,50, 201))
+ax.hist(mu, bins = np.linspace(5,50, 201))
 ax.set_xlabel('$M_1\ [M_\\odot]$')
-plt.savefig(out_plot + 'M1_events.pdf', bbox_inches = 'tight')
+fig.savefig(out_plot + '/M1_events.pdf', bbox_inches = 'tight')
 
-np.savetxt(out_plot + 'M1_events.txt', np.array(mu))
+np.savetxt(out_plot + '/M1_events.txt', np.array(mu))
