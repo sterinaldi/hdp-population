@@ -16,7 +16,7 @@ def draw_sample(mu1, mu2, s1, s2):
 out_dir   = '/home/srinaldi/mass_inference/multivariate-25-35/events/'
 out_plot  = '/home/srinaldi/mass_inference/multivariate-25-35/'
 n_events  = 100
-n_samples = 100
+n_samples = 30
 alpha     = 100
 pars      = [25,4]
 samples = []
