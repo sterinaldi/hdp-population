@@ -36,7 +36,7 @@ for i in range(n_parallel_jobs):
                         alpha0  = 10,
                         gamma   = 10,
                         output_folder = output,
-                        verbose = False,
+                        verbose = True,
                         # injected_density = lambda x : normal_density(x, *pars)
                         injected_density = lambda x : (normal_density(x, *pars_1) + normal_density(x, *pars_2))/2.
                         ))
