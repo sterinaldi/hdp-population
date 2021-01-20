@@ -36,6 +36,7 @@ class gibbs_sampler:
     ------------------
     Usage example:
     
+    import numpy as np
     import gibbs_sampler as GS
     from somewhere import normal
     
