@@ -3,6 +3,7 @@ from numpy.random import uniform
 import numpy.random as rd
 import matplotlib.pyplot as plt
 import os
+import corner
 
 class gibbs_sampler:
 
@@ -28,6 +29,7 @@ class gibbs_sampler:
         bootstrap:                      Error estimation using Bootstrap technique.
         display_config:                 Prints configuration parameters.
         plot_samples:                   Plots x_i samples histogram along with inferred posterior distribution.
+        compute_autocorrelation:        Computes autocorrelation function C(T).
         run:                            Runs the analysis. This and postprocessing() are potentially the only 'external' methods.
         postprocessing:                 Postprocesses pre-generated data.
         get_mass_samples:               Returns mass samples. Solves Ray usage issues.
@@ -66,11 +68,13 @@ class gibbs_sampler:
                  step,
                  alpha0,
                  gamma,
-                 sigma_b = [np.log(2),np.log(6)],
+                 sigma_b = [np.log(2),np.log(4)],
                  output_folder = './',
                  n_resamples = 250,
+                 delta_M = 1.,
                  injected_density = None,
-                 verbose = True):
+                 verbose = True,
+                 diagnostic = False):
         """
         Class instancer.
         
@@ -86,8 +90,10 @@ class gibbs_sampler:
             :list sigma_b:            Upper and lower prior mass boundaries.
             :str output_folder        Output folder.
             :int n_resamples:         Number of bootstrap draws.
+            :double delta_M:          Interval width around M_old for tentative sample drawing.
             :method injected_density: Injected probability density function, used for plotting purposes only. Optional.
             :bool verbose:            Printing statuts, default is True. Meant to be turned off while parallelizing.
+            :bool diagnostic:         Diagnostic plots (autocorrelation)
             
         Return:
             :gibbs_sampler:           The instanciated sampler.
@@ -114,7 +120,8 @@ class gibbs_sampler:
         
         # Uniform prior on masses
         self.mass_prior = lambda x : 1/(self.max_m - self.min_m) if (self.min_m < x < self.max_m) else 0
-        self.draw_mass  = lambda : uniform(self.min_m, self.max_m)
+        self.draw_mass  = lambda M: M + delta_M * uniform(-1,1)
+        self.draw_mass_initial  = lambda : uniform(self.min_m, self.max_m)
         
         # Jeffreys prior on sigma
         self.sigma_prior = lambda x : 1/(x * np.log(self.max_sigma-self.min_sigma))
@@ -127,12 +134,16 @@ class gibbs_sampler:
         self.burnin      = burnin      # burn-in
         self.step        = step        # steps between two outcomes (avoids autocorrelation)
         self.n_resamples = n_resamples # bootstrap resamplings
+        self.delta_M     = delta_M     # interval around old M sample (for updating)
         
         self.output_folder    = output_folder
         self.injected_density = injected_density
         self.verbose          = verbose
+        self.diagnostic       = diagnostic
         
-        self.mass_samples = []
+        self.posterior_samples = []
+        self.mass_samples      = []
+        self.sigma_samples     = []
         self.acceptance_table = []
         self.acceptance_component = []
         
@@ -147,7 +158,7 @@ class gibbs_sampler:
         
         for j in range(len(self.table_index)):
             for i in range(len(self.table_index[j])):
-                mass_temp  = self.draw_mass()
+                mass_temp  = self.draw_mass_initial()
                 sigma_temp = self.draw_sigma()
                 # Masses
                 try:
@@ -184,7 +195,8 @@ class gibbs_sampler:
             flag_newtable = True
             # If new table is instanciated, choose if sampling from existing parameters of generating a new set
             if uniform() < self.gamma/(self.gamma+len(self.components)):
-                new_component     = [self.draw_mass(), self.draw_sigma()]
+                # new_component     = [self.draw_mass(), self.draw_sigma()]
+                new_component     = [self.draw_mass(old_component[0]), self.draw_sigma()]
                 flag_newcomponent = True
                 new_f             = self.normal_density(self.samples[event_index][sample_index], *new_component)
                 # Probability of generating sample x_i with new mixture component
@@ -241,7 +253,8 @@ class gibbs_sampler:
         
         # Selecting between choosing from an existing component or drawing a new component
         if uniform() < self.gamma/(self.gamma+len(self.components)):
-            new_component     = [self.draw_mass(), self.draw_sigma()]
+            # new_component     = [self.draw_mass(), self.draw_sigma()]
+            new_component     = [self.draw_mass(old_component[0]), self.draw_sigma()]
             flag_newcomponent = True
             # Probability of generating sample array [x] with new mixture component
             p_new = self.evaluate_probability_component(new_component, -1, event_index, self.samples[event_index])
@@ -368,12 +381,21 @@ class gibbs_sampler:
         self.acceptance_component.append(self.accept_component/tries_component)
         return
     
-    def save_mass_samples(self):
+    def save_posterior_samples(self):
         """
         Stores mass samples in apposite variable.
         """
+        samples = []
+        [self.components[index] for table in self.tables for index in table]
+        for table_is, table in zip(self.table_index, self.tables):
+            set_table_is = set(table_is)
+            max = table[table_is[0]]
+            for index in set_table_is:
+                if table_is.count(index)/self.components[table[index]][1] > table_is.count(max)/self.components[table[max]][1]:
+                    max = index
+            samples.append(self.components[max])
         
-        self.mass_samples.append([self.components[index][0] for table in self.tables for index in table])
+        self.posterior_samples.append(samples)
     
     def run_sampling(self):
         """
@@ -392,10 +414,13 @@ class gibbs_sampler:
                 print('\rSAMPLING: {0}/{1}'.format(i+1, self.n_draws), end = '')
             for j in range(self.step):
                 self.markov_step()
-            self.save_mass_samples()
+            self.save_posterior_samples()
         if self.verbose:
             print('\n', end = '')
-        self.mass_samples = np.array([m for draw in self.mass_samples for m in draw])
+        # flattening
+        self.mass_samples = np.array([m[0] for draw in self.posterior_samples for m in draw])
+        self.sigma_samples = np.array([m[1] for draw in self.posterior_samples for m in draw])
+        self.posterior_samples = np.array([m for draw in self.posterior_samples for m in draw])
         return
     
     def single_bootstrap(self):
@@ -456,6 +481,35 @@ class gibbs_sampler:
             ax.set_ylabel('$p(M)$')
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(i+1), bbox_inches = 'tight')
             
+    def compute_autocorrelation(self):
+        """
+        Computes autocorrelation function, defined as
+        
+            C(T) = (<x(t)x(t+T)> - <x>^2)/(<x(t)>^2-<x(t)^2>)
+            
+        where <•> denotes average over time.
+        """
+        sq_mean = np.mean(self.mass_samples)**2
+        sq_std  = np.std(self.mass_samples)**2
+        self.autocorrelation = []
+        for i in range(int(len(self.mass_samples)/2.)):
+            ac = 0.
+            for j in range(len(self.mass_samples)):
+                try:
+                    ac += (self.mass_samples[j] * self.mass_samples[j+i]) - sq_mean
+                except:
+                    ac += (self.mass_samples[j] * self.mass_samples[(j+i) - len(self.mass_samples)]) - sq_mean
+            self.autocorrelation.append(ac/(sq_std*len(self.mass_samples)))
+        
+        fig = plt.figure()
+        ax  = fig.add_subplot(111)
+        ax.plot(self.autocorrelation, marker = '')
+        ax.set_xlabel('$\\tau\ [a.u.]$')
+        ax.set_ylabel('autocorrelation')
+        fig.savefig(self.output_folder+'/autocorrelation.pdf', bbox_inches = 'tight')
+        
+        
+            
     def run(self):
         """
         Runs sampler, saves samples and produces output plots.
@@ -465,6 +519,8 @@ class gibbs_sampler:
             self.display_config()
         self.run_sampling()
         np.savetxt(self.output_folder+'/mass_samples.txt', self.mass_samples)
+        if self.diagnostic:
+            self.compute_autocorrelation()
         # samples
         fig = plt.figure(1)
         ax  = fig.add_subplot(111)
@@ -511,6 +567,13 @@ class gibbs_sampler:
         ax1.set_ylabel('Table')
         ax2.set_ylabel('Component')
         plt.savefig(self.output_folder+'/acceptance.pdf', bbox_inches = 'tight')
+        
+        # corner plot
+        print(self.posterior_samples)
+        fig = corner.corner(self.posterior_samples, labels=[r"$M_1$", r"$\sigma$"],
+                       quantiles=[0.16, 0.5, 0.84],
+                       show_titles=True, title_kwargs={"fontsize": 12})
+        fig.savefig(self.output_folder+'/corner_plot.pdf', bbox_inches = 'tight')
         return
     
     def postprocessing(self, samples_file = None, bootstrapping = False):
