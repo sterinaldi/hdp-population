@@ -13,11 +13,11 @@ def draw_sample(mu1, mu2, s1, s2):
         if (normal_density(m, mu1, s1) + normal_density(m, mu2, s2)) > uniform(0, max([normal_density(mu1,mu1,s1), normal_density(mu2,mu2,s2)])):
             return m
 
-out_dir   = '/home/srinaldi/mass_inference/multivariate-25-35/events/'
-out_plot  = '/home/srinaldi/mass_inference/multivariate-25-35/'
-n_events  = 100
-n_samples = 30
-alpha     = 100
+out_dir   = '/Users/stefanorinaldi/Documents/mass_inference/test_generator_2/events/'
+out_plot  = '/Users/stefanorinaldi/Documents/mass_inference/test_generator_2/'
+n_events  = 1
+n_samples = 200
+alpha     = 1000
 pars      = [25,4]
 samples = []
 
@@ -28,12 +28,12 @@ if not os.path.exists(out_dir):
 
 mu = []
 for i in range(n_events):
-    pars = [draw_sample(25, 35, 3, 2), np.exp(uniform(np.log(2), np.log(6)))]
-    #pars  = [normal(25, 3), normal(35,2),np.exp(uniform(np.log(2), np.log(6))), np.exp(uniform(np.log(2), np.log(6)))]
+    #pars = [draw_sample(25, 35, 3, 2), np.exp(uniform(np.log(2), np.log(6)))]
+    pars  = [normal(10, 3), normal(35,2),np.exp(uniform(np.log(2), np.log(6))), np.exp(uniform(np.log(2), np.log(6)))]
     for _ in range(n_samples):
         if uniform() < alpha/(alpha+len(samples)):
-            #samples.append(draw_sample(*pars))
-            samples.append(normal(*pars))
+            samples.append(draw_sample(*pars))
+            #samples.append(normal(*pars))
         else:
             samples.append(choice(samples))
     mu.append(pars[0])
@@ -42,7 +42,7 @@ for i in range(n_events):
 
 fig = plt.figure()
 ax  = fig.add_subplot(111)
-ax.hist(mu, bins = np.linspace(5,50, 201))
+ax.hist(mu, bins = int(np.sqrt(len(mu))))
 ax.set_xlabel('$M_1\ [M_\\odot]$')
 fig.savefig(out_plot + '/M1_events.pdf', bbox_inches = 'tight')
 
