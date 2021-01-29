@@ -38,19 +38,18 @@ class hdp_sampler:
                  burnin,
                  step,
                  gamma,
-                 sigma_b = [np.log(2), np.log(20)],
-                 alpha_b = [0.1, 100],
+                 sigma_b = [np.log(1), np.log(10)],
+                 alpha_b = [1, 50],
                  output_folder = './',
                  delta_M = 5,
-                 delta_s = 0.1,
-                 delta_a = 0.5,
+                 delta_s = 0.15,
+                 delta_a = 5,
                  injected_density = None,
                  verbose = True,
-                 diagnostic = False):
+                 diagnostic = False,
+                 truths = None):
     
         self.events      = events
-        self.values      = np.array([np.array(list(set(samples))) for samples in events])
-        self.occurrences = np.array([np.array([list(samples).count(val) for val in vals]) for samples, vals in zip(self.events, self.values)])
         
         self.max_m     = max(mass_b)
         self.min_m     = min(mass_b)
@@ -75,6 +74,7 @@ class hdp_sampler:
         self.injected_density = injected_density
         self.verbose          = verbose
         self.diagnostic       = diagnostic
+        self.truths           = truths
         
         self.mass_samples  = np.zeros(self.n_draws * len(self.events))
         self.sigma_samples = np.zeros(self.n_draws * len(self.events))
@@ -113,7 +113,7 @@ class hdp_sampler:
         else:
             new_i = rd.randint(len(self.events))
             new_pars = self.pars[new_i]
-        
+            
         p_old = self.evaluate_probability_pars(old_pars, event_index)
         p_new = self.evaluate_probability_pars(new_pars, event_index)
         
@@ -137,15 +137,16 @@ class hdp_sampler:
             return -np.inf
         
         logP = 0.
-        counter = 0.
-        for occ, val in zip(self.occurrences[event_index], self.values[event_index]):
-            for i in range(occ):
-                if not i == 0:
-                    logI = np.log(i)
-                    logP += logsumexp([logI, np.log(pars[2]) + self.log_normal_density(val, pars[0], pars[1])]) - np.log(counter + pars[2])
-                else:
-                    logP += self.log_normal_density(val, pars[0], pars[1]) - np.log(counter + pars[2])
-                counter += 1.
+        for index in range(len(self.events[event_index])):
+            draws = self.events[event_index][:index]
+            new   = self.events[event_index][index]
+            
+            if new in draws:
+                logP += np.log(len(draws)/(pars[2] + len(draws))) + np.log(np.sum(draws == new))
+                
+            else:
+                logP += np.log(pars[2]/(len(draws) + pars[2])) + self.log_normal_density(new, pars[0], pars[1])
+        
         return logP
     
     def log_normal_density(self, x, x0, sigma):
@@ -158,7 +159,7 @@ class hdp_sampler:
             :double x0:    Mean.
             :double sigma: Variance.
         Returns:
-            :double:       N(x).
+            :double:       log(N(x)).
         """
         return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
     
@@ -232,7 +233,7 @@ class hdp_sampler:
             fig = plt.figure()
             fig.suptitle('Event {0}'.format(i+1))
             ax  = fig.add_subplot(111)
-            ax.hist(samples, bins = int(np.sqrt(len(samples))), histtype = 'step', density = True)
+            ax.hist(set(samples), bins = int(np.sqrt(len(set(samples)))), histtype = 'step', density = True)
             self.probs = []
             self.p = {}
             for a in app:
@@ -316,6 +317,12 @@ class hdp_sampler:
         ax2.set_xlabel('$\\sigma\ [M_\\odot]$')
         ax3.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))), density = True)
         ax3.set_xlabel('$\\alpha$')
+        if not self.truths == None:
+            truths_m_file, truths_s_file, truths_a_file = self.truths
+            for m, s, a in zip(np.atleast_1d(np.genfromtxt(truths_m_file)), np.atleast_1d(np.genfromtxt(truths_s_file)), np.atleast_1d(np.genfromtxt(truths_a_file))):
+                ax1.axvline(m, ls = '--', c = 'r', linewidth = 0.4)
+                ax2.axvline(s, ls = '--', c = 'r', linewidth = 0.4)
+                ax3.axvline(a, ls = '--', c = 'r', linewidth = 0.4)
         plt.tight_layout()
         plt.savefig(self.output_folder+'/posterior_samples.pdf', bbox_inches = 'tight')
         
@@ -367,6 +374,12 @@ class hdp_sampler:
         ax2.set_xlabel('$\\sigma\ [M_\\odot]$')
         ax3.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))), density = True)
         ax3.set_xlabel('$\\alpha$')
+        if not self.truths == None:
+            truths_m_file, truths_s_file, truths_a_file = self.truths
+            for m, s, a in zip(np.genfromtxt(truths_m_file), np.genfromtxt(truths_s_file), np.genfromtxt(truths_a_file)):
+                ax1.axvline(m, ls = '--', c = 'r', linewidth = 0.4)
+                ax2.axvline(s, ls = '--', c = 'r', linewidth = 0.4)
+                ax3.axvline(a, ls = '--', c = 'r', linewidth = 0.4)
         plt.savefig(self.output_folder+'/posterior_samples.pdf', bbox_inches = 'tight')
 
         # corner plot
