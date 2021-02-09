@@ -77,7 +77,7 @@ class gibbs_dpgmm:
         self.ext_sigmas  = np.ones(self.max_stick)
         
         # Posteriors
-        self.internal_posterior_samples = [ [ [] for _ in range(self.max_stick)] for _ in range(len(self.events))]
+        self.internal_posterior_samples = {i: [] for i in range(len(self.events))}
         self.mass_samples = np.zeros(len(self.events))
         self.external_posterior_samples = [ [] for _ in range(self.max_stick)]
         
@@ -181,8 +181,7 @@ class gibbs_dpgmm:
         self.update_parameters(event_index)
         
     def save_posterior_samples(self, event_index):
-        for j in range(self.max_stick):
-            self.internal_posterior_samples[event_index][j].append({'mean': self.int_means[event_index][j], 'sigma': self.int_sigmas[event_index][j], 'weight': self.int_weights[event_index][j]})
+        self.internal_posterior_samples[event_index].append([{'mean': self.int_means[event_index][j], 'sigma': self.int_sigmas[event_index][j], 'weight': self.int_weights[event_index][j]} for j in range(self.max_stick)])
                 
     def run_sampling(self):
         for j in range(len(self.events)):
@@ -223,16 +222,21 @@ class gibbs_dpgmm:
         
         p = {}
         
-        for samples, post, i in zip(self.events, self.internal_posterior_samples, range(len(self.events))):
+        for samples, i in zip(self.events, range(len(self.events))):
             fig = plt.figure()
             fig.suptitle('Event {0}'.format(i+1))
             ax  = fig.add_subplot(111)
             ax.hist(samples, bins = int(np.sqrt(len(samples))), histtype = 'step', density = True)
-            probs = []
-            for a in app:
-                probs.append([logsumexp([self.log_normal_density(a, component['mean'], component['sigma']) + np.log(component['weight']) for component in sample]) for sample in post])
+            finalprob = []
+            for s in self.internal_posterior_samples[i]:
+                probs = np.array([self.log_normal_density(app, component['mean'], component['sigma']) for component in s])
+                ws = np.atleast_2d(np.array([component['weight'] for component in s]))
+                print(ws)
+                print(np.shape(probs), np.shape(ws))
+                finalprob.append(logsumexp(probs, b = ws.T, axis = 0))
+                
             for perc in percentiles:
-                p[perc] = np.exp(np.percentile(probs, perc, axis = 1))
+                p[perc] = np.exp(np.percentile(finalprob, perc, axis = 0))
             np.savetxt(self.output_events + '/rec_prob_{0}.txt'.format(i+1), np.array(p[50]))
             
             ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
@@ -262,9 +266,11 @@ class gibbs_dpgmm:
         fig = plt.figure()
         ax  = fig.add_subplot(111)
         for i in range(len(self.events)):
-            w = [np.mean([sample['weight'] for sample in component]) for component in self.internal_posterior_samples[i]]
-            std = [np.std([sample['weight'] for sample in component]) for component in self.internal_posterior_samples[i]]
-        ax.errorbar(np.arange(1, self.max_stick+1), w, yerr = std, ls = '', marker = '+')
+            w = np.array([[component['weight'] for component in sample] for sample in self.internal_posterior_samples[i]])
+            m = w.mean(axis = 0)
+            print(m)
+            std = w.std(axis = 0)
+        ax.errorbar(np.arange(1, self.max_stick+1), m, yerr = std, ls = '', marker = '+')
         ax.set_xlabel('$w_i$')
         plt.savefig(self.output_folder+'/components.pdf', bbox_inches = 'tight')
 #        for key in self.mass_samples.keys():
