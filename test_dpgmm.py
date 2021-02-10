@@ -1,6 +1,6 @@
 import numpy as np
 import os
-import dpgmm_sampler as DPGMM
+import collapsed_gibbs as DPGMM
 
 events_path = '/Users/stefanorinaldi/Documents/mass_inference/uniform/events/'
 event_files = [f for f in os.listdir(events_path) if not f.startswith('.')]
@@ -18,18 +18,14 @@ pars = [25,4]
 pars_1 = [25, 3]
 pars_2 = [35, 2]
 
-sampler = DPGMM.gibbs_dpgmm(events = events,
+sampler = DPGMM.CGSampler(events = events,
                         mass_b  = [5,50],
-                        n_draws = 100,
-                        burnin  = 1000,
-                        step    = 100,
-                        alpha0  = 1,
+                        n_draws = 10,
+                        burnin  = 100,
+                        step    = 10,
+                        alpha0  = 10,
                         gamma0   = 1,
-                        V = 3,
-                        max_stick = 4,
                         output_folder = output,
-                        verbose = True,
-                        diagnostic = False,
                         # injected_density = lambda x : normal_density(x, *pars)
                         # injected_density = lambda x : (normal_density(x, *pars_1) + normal_density(x, *pars_2))/2.
                         )
