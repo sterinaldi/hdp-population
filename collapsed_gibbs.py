@@ -25,9 +25,9 @@ class CGSampler:
                        mass_b = [5,50],
                        alpha0 = 1,
                        gamma0 = 1,
-                       beta = 6,
-                       alpha = 3,
-                       k = 10**-2,
+                       beta = 5,
+                       alpha = 5,
+                       k = 0.01,
                        output_folder = './',
                        initial_cluster_number = 2.
                        ):
@@ -100,11 +100,7 @@ class CGSampler:
         k_n     = state['hyperparameters_']["k"] + N
         mu_n    = (state['hyperparameters_']["k"]*state['hyperparameters_']["mu"] + N*mean)/(state['hyperparameters_']["k"] + N)
         # Update t-parameters
-        try:
-            t_sigma = np.sqrt((beta_n*(k_n+1))/(alpha_n*k_n))
-        except RuntimeWarning:
-            print('\n')
-            print(state['hyperparameters_']["beta"], sigma, state['hyperparameters_']["k"], N, mean, state['hyperparameters_']["mu"], (mean-state['hyperparameters_']["mu"])**2)
+        t_sigma = np.sqrt((beta_n*(k_n+1))/(alpha_n*k_n))
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
         logL = student_t(2*alpha_n).logpdf(t_x)
@@ -112,7 +108,7 @@ class CGSampler:
 
     def add_datapoint_to_suffstats(self, x, ss):
         mean = (ss.mean*(ss.N)+x)/(ss.N+1)
-        var  = (ss.var*ss.N + (x - mean)**2)/(ss.N+1)
+        var  = (ss.N*(ss.var + ss.mean**2) + x**2)/(ss.N+1) - mean**2
         return self.SuffStat(mean, var, ss.N+1)
 
 
@@ -120,8 +116,7 @@ class CGSampler:
         if ss.N == 1:
             return(self.SuffStat(0,0,0))
         mean = (ss.mean*(ss.N)-x)/(ss.N-1)
-        var  = (ss.var*ss.N - (x - ss.mean)**2)/(ss.N-1)
-        #print(x, mean, var)
+        var  = (ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1) - mean**2
         return self.SuffStat(mean, var, ss.N-1)
     
     def cluster_assignment_distribution(self, data_id, state):
