@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from time import *
 
 from collections import namedtuple, Counter
 from scipy import stats
@@ -25,11 +26,11 @@ class CGSampler:
                        mass_b = [5,50],
                        alpha0 = 1,
                        gamma0 = 1,
-                       beta = 5,
-                       alpha = 5,
-                       k = 0.01,
+                       b = 3,
+                       a = 3,
+                       V = 1/3.,
                        output_folder = './',
-                       initial_cluster_number = 2.
+                       initial_cluster_number = 5.
                        ):
         
         self.events  = events
@@ -42,10 +43,10 @@ class CGSampler:
         self.alpha0 = alpha0
         self.gamma0 = gamma0
         # Student-t parameters
-        self.beta  = beta
-        self.alpha = alpha
-        self.k     = k
-        self.mu    = np.mean(self.events, axis = 1)
+        self.b  = (b**2)*len(events[0])/initial_cluster_number
+        self.a  = len(events[0])/(initial_cluster_number/2.)
+        self.V  = V
+        self.mu = np.mean(self.events, axis = 1)
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
@@ -58,18 +59,18 @@ class CGSampler:
         cluster_ids = list(np.arange(int(self.icn)))
         state = {
             'cluster_ids_': cluster_ids,
-            'data_': samples,
-            'num_clusters_': self.icn,
+            'data_': np.sort(samples),
+            'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'hyperparameters_': {
-                "beta": self.beta,
-                "alpha": self.alpha,
-                "k": self.k,
+                "b": self.b,
+                "a": self.a,
+                "V": self.V,
                 "mu": mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
-            'assignment': [random.choice(cluster_ids) for _ in samples],
-            'pi': {cid: self.alpha / self.icn for cid in cluster_ids},
+            'assignment': [int((a - a%(len(samples)/self.icn))/(len(samples)/self.icn)) for a in range(len(samples))],
+            'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             }
         self.update_suffstats(state)
         return state
@@ -95,15 +96,15 @@ class CGSampler:
         sigma = ss.var
         N     = ss.N
         # Update hyperparameters
-        beta_n  = state['hyperparameters_']["beta"] + sigma*N/2. + state['hyperparameters_']["k"]*N*(mean-state['hyperparameters_']["mu"])**2./(2*(state['hyperparameters_']["k"]+N))
-        alpha_n = state['hyperparameters_']["alpha"] + N/2
-        k_n     = state['hyperparameters_']["k"] + N
-        mu_n    = (state['hyperparameters_']["k"]*state['hyperparameters_']["mu"] + N*mean)/(state['hyperparameters_']["k"] + N)
+        V_n  = 1/(1/state['hyperparameters_']["V"] + N)
+        mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
+        b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
+        a_n  = state['hyperparameters_']["a"] + N/2.
         # Update t-parameters
-        t_sigma = np.sqrt((beta_n*(k_n+1))/(alpha_n*k_n))
+        t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
-        logL = student_t(2*alpha_n).logpdf(t_x)
+        logL = student_t(df = 2*a_n).logpdf(t_x)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
@@ -129,9 +130,9 @@ class CGSampler:
         for cid in cluster_ids:
             scores[cid] = self.log_predictive_likelihood(data_id, cid, state)
             scores[cid] += self.log_cluster_assign_score(cid, state)
-        scores = {cid: score for cid, score in scores.items()}
-        normalization = -logsumexp(list(scores.values()))
-        scores = {cid: np.exp(score+normalization) for cid, score in scores.items()}
+        scores = {cid: np.exp(score) for cid, score in scores.items()}
+        normalization = 1/sum(scores.values())
+        scores = {cid: score*normalization for cid, score in scores.items()}
         return scores
 
     def log_cluster_assign_score(self, cluster_id, state):
@@ -194,14 +195,16 @@ class CGSampler:
             mean = ss[cid].mean
             sigma = ss[cid].var
             N     = ss[cid].N
-            beta_n  = state['hyperparameters_']["beta"] + sigma*N/2. + state['hyperparameters_']["k"]*N*(mean-state['hyperparameters_']["mu"])**2/(2*(state['hyperparameters_']["k"]+N))
-            alpha_n = state['hyperparameters_']["alpha"] + N/2
-            k_n     = state['hyperparameters_']["k"] + N
-            mu_n    = (state['hyperparameters_']["k"]*state['hyperparameters_']["mu"] + N*mean)/(state['hyperparameters_']["k"] + N)
-            l = stats.gamma(alpha_n, scale = 1/beta_n).rvs()
-            m = stats.norm(mu_n, 1/((k_n+N)*l)).rvs()
-            s = np.sqrt(1/l)
-            components[i] = {'mean': m, 'sigma': s, 'weight': weights[i]}
+            V_n  = 1/(1/state['hyperparameters_']["V"] + N)
+            mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
+            b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
+            a_n  = state['hyperparameters_']["a"] + N/2.
+            # Update t-parameters
+            #print(a_n, b_n)
+            s = stats.invgamma(a_n, scale = b_n).rvs()
+            m = stats.norm(mu_n, s*V_n).rvs()
+            #print(np.sqrt(s))
+            components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
         self.internal_mixture_samples[event_id].append(components)
     
     def run_sampling(self):
@@ -210,6 +213,11 @@ class CGSampler:
             for i in range(self.burnin):
                 print('\rBURN-IN: {0}/{1}'.format(i+1, self.burnin), end = '')
                 self.gibbs_step(state)
+#                for cid in state['cluster_ids_']:
+#                    try:
+#                        print(state['suffstats'][cid].N, state['suffstats'][cid].mean, np.sqrt(state['suffstats'][cid].var))
+#                    except:
+#                        print(state['suffstats'][cid].N, state['suffstats'][cid].mean, state['suffstats'][cid].var)
             print('\n', end = '')
             for i in range(self.n_draws):
                 print('\rSAMPLING: {0}/{1}'.format(i+1, self.n_draws), end = '')
@@ -217,6 +225,7 @@ class CGSampler:
                     self.gibbs_step(state)
                 self.sample_mixture_parameters(state, event_id)
             print('\n', end = '')
+            plot_clusters(state)
     
     def display_config(self):
         print('MCMC Gibbs sampler')
