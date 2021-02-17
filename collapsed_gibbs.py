@@ -5,7 +5,7 @@ import os
 from collections import namedtuple, Counter
 from scipy import stats
 from numpy import random
-from scipy.stats import t as student_t
+from scipy.stats import multivariate_t as student_t
 from scipy.special import logsumexp
 from scipy.stats import multivariate_normal as mn
 
@@ -26,9 +26,9 @@ class Sampler_SE:
                        n_draws,
                        step,
                        alpha0 = 1,
-                       b = 5,
-                       a = 3,
-                       V = 1/4.,
+                       L  = 5,
+                       k  = 3,
+                       nu = 1/4.,
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
@@ -36,6 +36,7 @@ class Sampler_SE:
                        ):
         
         self.mass_samples  = mass_samples
+        self.dim     = shape(self.mass_samples[0])[0]
         self.e_ID    = event_id
         self.burnin  = burnin
         self.n_draws = n_draws
@@ -66,9 +67,9 @@ class Sampler_SE:
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'hyperparameters_': {
-                "b": self.b,
-                "a": self.a,
-                "V": self.V,
+                "L": self.L,
+                "k": self.k,
+                "nu": self.nu,
                 "mu": self.mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
@@ -96,18 +97,18 @@ class Sampler_SE:
             
         x = state['data_'][data_id]
         mean = ss.mean
-        sigma = ss.var
-        N     = ss.N
+        S    = ss.cov
+        N    = ss.N
         # Update hyperparameters
-        V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-        mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-        b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
-        a_n  = state['hyperparameters_']["a"] + N/2.
+        k_n  = state['hyperparameters_']["k"] + N
+        mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
+        nu_n = state['hyperparameters_']["nu"] + N
+        L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"])/k_n
         # Update t-parameters
-        t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
-        t_x     = (x - mu_n)/t_sigma
+        t_df    = nu_n - self.dim + 1
+        t_shape = L_n*(k_n+1)/(k_n*t_df)
         # Compute logLikelihood
-        logL = student_t(df = 2*a_n).logpdf(t_x)
+        logL = student_t(df = t_df, loc = mu_n, shape = t_shape).logpdf(x)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
@@ -199,16 +200,18 @@ class Sampler_SE:
         components = {}
         for i, cid in enumerate(state['cluster_ids_']):
             mean = ss[cid].mean
-            sigma = ss[cid].var
+            S = ss[cid].cov
             N     = ss[cid].N
-            V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-            mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-            b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
-            a_n  = state['hyperparameters_']["a"] + N/2.
+            k_n  = state['hyperparameters_']["k"] + N
+            mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
+            nu_n = state['hyperparameters_']["nu"] + N
+            L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"])/k_n
             # Update t-parameters
-            s = stats.invgamma(a_n, scale = b_n).rvs()
-            m = stats.norm(mu_n, s*V_n).rvs()
-            components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
+            s = stats.invwishart(df = nu_n, scale = L_n).rvs()
+            t_df    = nu_n - self.dim + 1
+            t_shape = L_n*(k_n+1)/(k_n*t_df)
+            m = student_t(df = t_df, loc = mu_n, shape = t_shape).rvs()
+            components[i] = {'mean': m, 'cov': s, 'weight': weights[i]}
         self.mixture_samples.append(components)
     
     def run_sampling(self):
