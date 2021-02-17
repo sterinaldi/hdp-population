@@ -7,6 +7,7 @@ from scipy import stats
 from numpy import random
 from scipy.stats import t as student_t
 from scipy.special import logsumexp
+from scipy.stats import multivariate_normal as mn
 
 from numba import jit
 import ray
@@ -15,66 +16,6 @@ import ray
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
 """
 
-class CGSampler:
-                
-    def __init__(self, events,
-                       burnin,
-                       n_draws,
-                       step,
-                       alpha0 = 1,
-                       gamma0 = 1,
-                       b = 5,
-                       a = 3,
-                       V = 1/4.,
-                       m_min = 5,
-                       m_max = 50,
-                       output_folder = './',
-                       initial_cluster_number = 5.
-                       ):
-        
-        self.events = events
-        self.burnin = burnin
-        self.n_draws = n_draws
-        self.step = step
-        self.m_min   = m_min
-        self.m_max   = m_max
-        # DP
-        self.alpha0 = alpha0
-        self.gamma0 = gamma0
-        # student-t
-        self.a = a
-        self.b = b
-        self.V = V
-        # miscellanea
-        self.output_folder = output_folder
-        self.icn = initial_cluster_number
-        self.event_samplers = []
-    
-    def initialise_samplers(self):
-        for i, ev in enumerate(self.events):
-            self.event_samplers.append(Sampler_SE.remote(
-                                            ev,
-                                            i,
-                                            self.burnin,
-                                            self.n_draws,
-                                            self.step,
-                                            self.alpha0,
-                                            self.b,
-                                            self.a,
-                                            self.V,
-                                            self.m_min,
-                                            self.m_max,
-                                            self.output_folder,
-                                            self.icn
-                                            ))
-        return
-        
-    def run_event_sampling(self):
-        self.initialise_samplers()
-        tasks = [s.run.remote() for s in self.event_samplers]
-        trash = [ray.get(t) for t in tasks]
-        
-        
 ray.init()
 
 @ray.remote
@@ -111,7 +52,7 @@ class Sampler_SE:
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
-        self.SuffStat = namedtuple('SuffStat', 'mean var N')
+        self.SuffStat = namedtuple('SuffStat', 'mean cov N')
         # Output
         self.output_folder = output_folder
         self.mixture_samples = []
@@ -121,7 +62,7 @@ class Sampler_SE:
         cluster_ids = list(np.arange(int(self.icn)))
         state = {
             'cluster_ids_': cluster_ids,
-            'data_': np.sort(samples),
+            'data_': samples,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'hyperparameters_': {
@@ -141,10 +82,10 @@ class Sampler_SE:
         for cluster_id, N in Counter(state['assignment']).items():
 
             points_in_cluster = [x for x, cid in zip(state['data_'], state['assignment']) if cid == cluster_id]
-            mean = np.array(points_in_cluster).mean()
-            var  = np.array(points_in_cluster).var()
+            mean = np.atleast_2d(np.array(points_in_cluster).mean(axis = 0))
+            cov  = np.cov(np.array(points_in_cluster), rowvar = False)
             M    = len(points_in_cluster)
-            state['suffstats'][cluster_id] = self.SuffStat(mean, var, M)
+            state['suffstats'][cluster_id] = self.SuffStat(mean, cov, M)
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
         
@@ -170,12 +111,14 @@ class Sampler_SE:
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
+        x = np.atleast_2d(x)
         mean = (ss.mean*(ss.N)+x)/(ss.N+1)
-        var  = (ss.N*(ss.var + ss.mean**2) + x**2)/(ss.N+1) - mean**2
+        var  = (ss.N*(ss.cov + np.matmul(ss.mean.T, ss.mean)) + np.matmul(x.T, x))/(ss.N+1) - np.matmul(mean.T, mean)
         return self.SuffStat(mean, var, ss.N+1)
 
 
     def remove_datapoint_from_suffstats(self, x, ss):
+        x = np.atleast_2d(x)
         if ss.N == 1:
             return(self.SuffStat(0,0,0))
         mean = (ss.mean*(ss.N)-x)/(ss.N-1)
@@ -329,8 +272,8 @@ class Sampler_SE:
                 ax.set_xlabel('$M_1\ [M_\\odot]$')
         plt.tight_layout()
         fig.savefig(self.output_events +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
-        
-    @ray.method(num_return_vals = 1)
+    
+    @ray.method(num_returns = 1)
     def run(self):
         """
         Runs sampler, saves samples and produces output plots.
@@ -368,3 +311,67 @@ def log_normal_density(x, x0, sigma):
         :double:       N(x).
     """
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
+
+
+class CGSampler:
+                
+    def __init__(self, events,
+                       burnin,
+                       n_draws,
+                       step,
+                       alpha0 = 1,
+                       gamma0 = 1,
+                       b = 5,
+                       a = 3,
+                       V = 1/4.,
+                       m_min = 5,
+                       m_max = 50,
+                       output_folder = './',
+                       initial_cluster_number = 5.
+                       ):
+        
+        self.events = events
+        self.burnin = burnin
+        self.n_draws = n_draws
+        self.step = step
+        self.m_min   = m_min
+        self.m_max   = m_max
+        # DP
+        self.alpha0 = alpha0
+        self.gamma0 = gamma0
+        # student-t
+        self.a = a
+        self.b = b
+        self.V = V
+        # miscellanea
+        self.output_folder = output_folder
+        self.icn = initial_cluster_number
+        self.event_samplers = []
+    
+    def initialise_samplers(self):
+        for i, ev in enumerate(self.events):
+            self.event_samplers.append(Sampler_SE.remote(
+                                            ev,
+                                            i,
+                                            self.burnin,
+                                            self.n_draws,
+                                            self.step,
+                                            self.alpha0,
+                                            self.b,
+                                            self.a,
+                                            self.V,
+                                            self.m_min,
+                                            self.m_max,
+                                            self.output_folder,
+                                            self.icn
+                                            ))
+        return
+        
+    def run_event_sampling(self):
+        self.initialise_samplers()
+        task1 = self.event_samplers[0].run.remote()
+        a = ray.get(task1)
+        #tasks = [s.run.remote() for s in self.event_samplers]
+        #trash = [ray.get(t) for t in tasks]
+        
+        
