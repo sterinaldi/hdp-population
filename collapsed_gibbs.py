@@ -6,10 +6,11 @@ from collections import namedtuple, Counter
 from scipy import stats
 from numpy import random
 from scipy.stats import t as student_t
-from scipy.special import logsumexp
+from scipy.special import logsumexp, betaln
 
 from numba import jit
 import ray
+from ray.util import ActorPool
 
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
@@ -54,7 +55,7 @@ class CGSampler:
         for i, ev in enumerate(self.events):
             self.event_samplers.append(Sampler_SE.remote(
                                             ev,
-                                            i,
+                                            i+1,
                                             self.burnin,
                                             self.n_draws,
                                             self.step,
@@ -71,12 +72,19 @@ class CGSampler:
         
     def run_event_sampling(self):
         self.initialise_samplers()
-        tasks = [s.run.remote() for s in self.event_samplers]
-        trash = [ray.get(t) for t in tasks]
+        tasks = [s for s in self.event_samplers]
+        pool = ActorPool(tasks)
+        for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
+            pass
         
         
-ray.init()
-
+ray.init(ignore_reinit_error=True)
+    
+@jit()
+def my_student_t(df, t):
+    b = betaln(0.5, df/2.)
+    return -0.5*np.log(df)-b-((df+1)*0.5)*np.log1p(t*t/df)
+    
 @ray.remote
 class Sampler_SE:
     def __init__(self, mass_samples,
@@ -166,7 +174,7 @@ class Sampler_SE:
         t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
-        logL = student_t(df = 2*a_n).logpdf(t_x)
+        logL = my_student_t(df = 2*a_n, t = t_x)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
@@ -303,7 +311,7 @@ class Sampler_SE:
         p = {}
         
         fig = plt.figure()
-        fig.suptitle('Event {0}'.format(i+1))
+        fig.suptitle('Event {0}'.format(self.e_ID))
         ax  = fig.add_subplot(111)
         ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
         prob = []
@@ -330,7 +338,6 @@ class Sampler_SE:
         plt.tight_layout()
         fig.savefig(self.output_events +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         
-    @ray.method(num_return_vals = 1)
     def run(self):
         """
         Runs sampler, saves samples and produces output plots.
@@ -352,9 +359,9 @@ class Sampler_SE:
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
         fig.savefig(self.output_folder+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
-        return 1
+        return
 
-@jit(nopython = True)
+#@jit(nopython = True)
 def log_normal_density(x, x0, sigma):
     """
     Normal probability density function.
