@@ -1,6 +1,8 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import os
+from mpl_toolkits.mplot3d import Axes3D
 
 from collections import namedtuple, Counter
 from scipy import stats
@@ -9,16 +11,12 @@ from scipy.stats import multivariate_t as student_t
 from scipy.special import logsumexp
 from scipy.stats import multivariate_normal as mn
 
-from numba import jit
-import ray
-
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
 """
 
 ray.init()
 
-@ray.remote
 class Sampler_SE:
     def __init__(self, mass_samples,
                        event_id,
@@ -27,8 +25,8 @@ class Sampler_SE:
                        step,
                        alpha0 = 1,
                        L  = 5,
-                       k  = 3,
-                       nu = 1/4.,
+                       k  = 5,
+                       nu = 5,
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
@@ -46,10 +44,10 @@ class Sampler_SE:
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = (b**2)*len(mass_samples)/initial_cluster_number
-        self.a  = len(mass_samples)/(initial_cluster_number/2.)
-        self.V  = V
-        self.mu = np.mean(mass_samples)
+        self.L  = (L**2*len(mass_samples)/initial_cluster_number)*np.identity(self.dim)
+        self.k  = k
+        self.nu  = nu
+        self.mu = np.mean(mass_samples, axis = 0)
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
@@ -225,8 +223,12 @@ class Sampler_SE:
             for _ in range(self.step):
                 self.gibbs_step(state)
             self.sample_mixture_parameters(state)
+        self.last_state = state
         print('\n', end = '')
         return
+    
+    def save_mixture_samples(self):
+        np.savetxt(self.output_folder + '/mixture_samples.txt', np.array(self.mixture_samples))
     
     def display_config(self):
         print('MCMC Gibbs sampler')
@@ -249,34 +251,41 @@ class Sampler_SE:
         p = {}
         
         fig = plt.figure()
-        fig.suptitle('Event {0}'.format(i+1))
-        ax  = fig.add_subplot(111)
-        ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
-        prob = []
-        for a in app:
-            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
-        for perc in percentiles:
-            p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
-        np.savetxt(self.output_events + '/rec_prob_{0}.txt'.format(self.e_ID), np.array(p[50]))
-        
-        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
-        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
-        ax.plot(app, p[50], marker = '', color = 'r')
-        ax.set_xlabel('$M_1\ [M_\\odot]$')
-        ax.set_ylabel('$p(M)$')
-        plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
-        fig = plt.figure()
-        for i, s in enumerate(self.mixture_samples[:25]):
-            ax = fig.add_subplot(5,len(self.mixture_samples[:25])/5,i+1)
-            app = np.linspace(min(self.mass_samples),max(self.mass_samples),1000)
-            for c in s.values():
-                p = np.exp(log_normal_density(app,c['mean'], c['sigma']))*c['weight']
-                ax.plot(app,p, linewidth = 0.4)
-                ax.set_xlabel('$M_1\ [M_\\odot]$')
-        plt.tight_layout()
-        fig.savefig(self.output_events +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        fig.suptitle('Event {0}'.format(self.e_ID))
+#        ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
+#        prob = []
+#        for a in app:
+#            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
+#        for perc in percentiles:
+#            p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
+#        np.savetxt(self.output_events + '/rec_prob_{0}.txt'.format(self.e_ID), np.array(p[50]))
+#
+#        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
+#        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
+#        ax.plot(app, p[50], marker = '', color = 'r')
+#        ax.set_xlabel('$M_1\ [M_\\odot]$')
+#        ax.set_ylabel('$p(M)$')
+        if self.dims == 2:
+            ax  = fig.add_subplot(111)
+            ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.last_state['assignment'], marker = '.')
+            plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        else if self.dims == 3:
+            ax  = fig.add_subplot(111, projection = '3d')
+            plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+            ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], self.mass_samples[:,2], c = self.last_state['assignment'], marker = '.')
+        else if self.dims == 1:
+            plot_samples(self.last_state, self.output_events + '/event_{0}.pdf'.format(self.e_ID))
+#        fig = plt.figure()
+#        for i, s in enumerate(self.mixture_samples[:25]):
+#            ax = fig.add_subplot(5,len(self.mixture_samples[:25])/5,i+1)
+#            app = np.linspace(min(self.mass_samples),max(self.mass_samples),1000)
+#            for c in s.values():
+#                p = np.exp(log_normal_density(app,c['mean'], c['sigma']))*c['weight']
+#                ax.plot(app,p, linewidth = 0.4)
+#                ax.set_xlabel('$M_1\ [M_\\odot]$')
+#        plt.tight_layout()
+#        fig.savefig(self.output_events +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
     
-    @ray.method(num_returns = 1)
     def run(self):
         """
         Runs sampler, saves samples and produces output plots.
@@ -289,7 +298,9 @@ class Sampler_SE:
         self.output_events = self.output_folder + '/reconstructed_events'
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
-        self.plot_samples()
+        self.save_mixture_samples()
+        if self.dim < 4:
+            self.plot_samples()
         self.output_samples_folder = self.output_folder + '/posterior_samples/'
         if not os.path.exists(self.output_samples_folder):
             os.mkdir(self.output_samples_folder)
@@ -315,66 +326,16 @@ def log_normal_density(x, x0, sigma):
     """
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
 
-
-class CGSampler:
-                
-    def __init__(self, events,
-                       burnin,
-                       n_draws,
-                       step,
-                       alpha0 = 1,
-                       gamma0 = 1,
-                       b = 5,
-                       a = 3,
-                       V = 1/4.,
-                       m_min = 5,
-                       m_max = 50,
-                       output_folder = './',
-                       initial_cluster_number = 5.
-                       ):
-        
-        self.events = events
-        self.burnin = burnin
-        self.n_draws = n_draws
-        self.step = step
-        self.m_min   = m_min
-        self.m_max   = m_max
-        # DP
-        self.alpha0 = alpha0
-        self.gamma0 = gamma0
-        # student-t
-        self.a = a
-        self.b = b
-        self.V = V
-        # miscellanea
-        self.output_folder = output_folder
-        self.icn = initial_cluster_number
-        self.event_samplers = []
-    
-    def initialise_samplers(self):
-        for i, ev in enumerate(self.events):
-            self.event_samplers.append(Sampler_SE.remote(
-                                            ev,
-                                            i,
-                                            self.burnin,
-                                            self.n_draws,
-                                            self.step,
-                                            self.alpha0,
-                                            self.b,
-                                            self.a,
-                                            self.V,
-                                            self.m_min,
-                                            self.m_max,
-                                            self.output_folder,
-                                            self.icn
-                                            ))
-        return
-        
-    def run_event_sampling(self):
-        self.initialise_samplers()
-        task1 = self.event_samplers[0].run.remote()
-        a = ray.get(task1)
-        #tasks = [s.run.remote() for s in self.event_samplers]
-        #trash = [ray.get(t) for t in tasks]
         
         
+def plot_clusters(state, file):
+    gby = pd.DataFrame({
+            'data': state['data_'],
+            'assignment': state['assignment']}
+        ).groupby(by='assignment')['data']
+    hist_data = [gby.get_group(cid).tolist()
+                 for cid in gby.groups.keys()]
+    plt.hist(hist_data,
+             bins=20,
+             histtype='stepfilled', alpha=.5 )
+    plt.savefig(file, bbox_inches = 'tight')
