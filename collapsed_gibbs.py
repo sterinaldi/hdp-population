@@ -7,6 +7,7 @@ from scipy import stats
 from numpy import random
 from scipy.stats import t as student_t
 from scipy.special import logsumexp, betaln
+from scipy.interpolate import interp1d
 
 from numba import jit
 import ray
@@ -27,6 +28,7 @@ class CGSampler:
                        b = 30,
                        a = 3,
                        V = 1/4.,
+                       delta_M = 1,
                        m_min = 5,
                        m_max = 60,
                        output_folder = './',
@@ -50,6 +52,7 @@ class CGSampler:
         self.output_folder = output_folder
         self.icn = initial_cluster_number
         self.event_samplers = []
+        self.delta_M = delta_M
     
     def initialise_samplers(self):
         for i, ev in enumerate(self.events):
@@ -76,7 +79,45 @@ class CGSampler:
         pool = ActorPool(tasks)
         for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
             pass
-        
+            
+    def load_mixtures(self):
+        self.mass_posteriors = []
+        self.max_mass_posteriors = []
+        prob_files = [f for f in os.listdir(events_path) if f.startswith('log_rec_prob_')]
+        for prob in prob_files:
+            rec_prob = np.genfromtxt(prob)
+            self.log_mass_posteriors.append(interp1d(rec_prob[:,0], rec_prob[:,1], bounds_error = False, fill_value = 0.)
+    
+    def initialise_mt_samples(self):
+        self.mt = np.mean(self.events, axis = 1)
+    
+    def run_mass_function_sampling(self):
+    
+        self.load_mixtures()
+        self.initialise_mt_samples()
+        self.mf_folder = self.output_folder+'/mass_function/'
+        if not os.path.exists(mf_folder):
+            os.mkdir(mf_folder)
+            
+        sampler = MF_Sampler(self.mt,
+                       0,
+                       self.log_mass_posteriors,
+                       self.burnin,
+                       self.n_draws,
+                       self.step,
+                       delta_M = self.delta_M,
+                       alpha0 = self.gamma0,
+                       #eventualmente differenziare iperparametri interni ed esterni
+                       #ora è così solo per finalità di test
+                       b = self.b,
+                       a = self.a,
+                       V = self.V,
+                       m_min = self.m_min,
+                       m_max = self.m_max,
+                       output_folder = self.mf_folder,
+                       initial_cluster_number = self.icn
+                       )
+    
         
 ray.init(ignore_reinit_error=True)
     
@@ -317,9 +358,10 @@ class Sampler_SE:
         prob = []
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
+        p[50] = np.percentile(prob, 50, axis = 1)
+        np.savetxt(self.output_events + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array(app, p[50]))
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
-        np.savetxt(self.output_events + '/rec_prob_{0}.txt'.format(self.e_ID), np.array(p[50]))
         
         ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
@@ -343,8 +385,6 @@ class Sampler_SE:
         Runs sampler, saves samples and produces output plots.
         """
         
-        flags = []
-        print(1)
         self.run_sampling()
         # reconstructed events
         self.output_events = self.output_folder + '/reconstructed_events'
@@ -361,7 +401,64 @@ class Sampler_SE:
         fig.savefig(self.output_folder+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
         return
 
-#@jit(nopython = True)
+class MF_Sampler(Sampler_SE):
+
+    def __init__(self, mass_samples,
+                       event_id,
+                       mass_posteriors,
+                       burnin,
+                       n_draws,
+                       step,
+                       delta_M = 1,
+                       alpha0 = 1,
+                       b = 5,
+                       a = 3,
+                       V = 1/4.,
+                       m_min = 5,
+                       m_max = 50,
+                       output_folder = './',
+                       initial_cluster_number = 5.
+                       ):
+        super().__init__(mass_samples, event_id, burnin, n_draws, step, alpha0, b, a, v, m_min, m_max, output_folder, initial_cluster_number)
+        self.mass_posteriors = mass_posteriors
+        self.delta_M = delta_M
+
+    def update_mass_posteriors(self):
+        # Parallelizzabile
+        for index in len(mass_posteriors):
+            self.update_mass_posteriors(index)
+    
+    def update_single_posterior(self, e_index):
+        M_old = self.mass_samples[e_index]
+        M_new = draw_mass(M_old, self.delta_M)
+        p_old = self.mass_posteriors[index](M_old)
+        p_new = self.mass_posteriors[index](M_new)
+        
+        if p_new - p_old > np.log(random.uniform()):
+            self.mass_samples[e_index] = M_new
+        return
+    
+    def run_sampling(self):
+        state = self.initial_state(self.mass_samples)
+        for i in range(self.burnin):
+            print('\rBURN-IN: {0}/{1}'.format(i+1, self.burnin), end = '')
+            self.update_mass_posteriors()
+            self.gibbs_step(state)
+        print('\n', end = '')
+        for i in range(self.n_draws):
+            print('\rSAMPLING: {0}/{1}'.format(i+1, self.n_draws), end = '')
+            for _ in range(self.step):
+                self.update_mass_posteriors()
+                self.gibbs_step(state)
+            self.sample_mixture_parameters(state)
+        print('\n', end = '')
+        return
+        
+@jit(nopython = True)
+def draw_mass(Mold, delta_M):
+    return Mold + delta_M * uniform(-1,1)
+
+
 def log_normal_density(x, x0, sigma):
     """
     Normal probability density function.
