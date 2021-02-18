@@ -13,7 +13,7 @@ from scipy.stats import multivariate_normal as mn
 from numpy.linalg import det, inv
 
 import ray
-from ray import ActorPool
+from ray.util import ActorPool
 from numba import jit
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
@@ -28,13 +28,13 @@ class CGSampler:
                        step,
                        alpha0 = 1,
                        gamma0 = 1,
-                       b = 30,
-                       a = 3,
-                       V = 1/4.,
+                       L = 1,
+                       k = 1,
+                       nu = 2,
                        m_min = 5,
                        m_max = 60,
                        output_folder = './',
-                       initial_cluster_number = 5.
+                       initial_cluster_number = 2.
                        ):
         
         self.events = events
@@ -47,9 +47,9 @@ class CGSampler:
         self.alpha0 = alpha0
         self.gamma0 = gamma0
         # student-t
-        self.a = a
-        self.b = b
-        self.V = V
+        self.L = L
+        self.k = k
+        self.nu = nu
         # miscellanea
         self.output_folder = output_folder
         self.icn = initial_cluster_number
@@ -64,9 +64,9 @@ class CGSampler:
                                             self.n_draws,
                                             self.step,
                                             self.alpha0,
-                                            self.b,
-                                            self.a,
-                                            self.V,
+                                            self.L,
+                                            self.k,
+                                            self.nu,
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
@@ -84,17 +84,27 @@ class CGSampler:
         
 ray.init(ignore_reinit_error=True)
     
+"""
+http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
+"""
 @jit()
 def my_student_t(df, t, mu, sigma, dim):
-    """
-    https://core.ac.uk/download/pdf/81139018.pdf
-    """
-    c = gammaln((df+dim)*0.5) - (df*0.5)*np.log(np.pi*df) - gammaln(df*0.5) + 0.5*np.log(det(sigma))
-    translated = np.atleast_2d(t - mu)
-    inv_sigma  = inv(sigma)
-    arg = np.matmul(np.matmul(translated, sigma), translated.T)
-    return c + 0.5*(df+dim)*np.log1p(arg/df)
 
+    vals, vecs = np.linalg.eigh(sigma)
+    logdet     = np.log(vals).sum()
+    valsinv    = np.array([1./v for v in vals])
+    U          = vecs * np.sqrt(valsinv)
+    dev        = t - mu
+    maha       = np.square(np.dot(dev, U)).sum(axis=-1)
+
+    x = 0.5 * (df + dim)
+    A = gammaln(x)
+    B = gammaln(0.5 * df)
+    C = dim/2. * np.log(df * np.pi)
+    D = 0.5 * logdet
+    E = -x * np.log1p((1./df) * maha)
+
+    return float(A - B - C - D + E)
 
 @ray.remote
 class Sampler_SE:
@@ -114,7 +124,7 @@ class Sampler_SE:
                        ):
         
         self.mass_samples  = mass_samples
-        self.dim     = shape(self.mass_samples[0])[0]
+        self.dim     = np.shape(self.mass_samples[0])[0]
         self.e_ID    = event_id
         self.burnin  = burnin
         self.n_draws = n_draws
@@ -124,10 +134,10 @@ class Sampler_SE:
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.L  = (L**2*len(mass_samples)/initial_cluster_number)*np.identity(self.dim)
+        self.L  = (L**2*(len(self.mass_samples)/initial_cluster_number))*np.identity(self.dim)
         self.k  = k
         self.nu  = nu
-        self.mu = np.mean(mass_samples, axis = 0)
+        self.mu = np.atleast_2d(np.mean(mass_samples, axis = 0))
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
@@ -169,7 +179,7 @@ class Sampler_SE:
     def log_predictive_likelihood(self, data_id, cluster_id, state):
         
         if cluster_id == "new":
-            ss = self.SuffStat(0,0,0)
+            ss = self.SuffStat(np.atleast_2d(0),np.identity(self.dim)*0,0)
         else:
             ss  = state['suffstats'][cluster_id]
             
@@ -179,30 +189,30 @@ class Sampler_SE:
         N    = ss.N
         # Update hyperparameters
         k_n  = state['hyperparameters_']["k"] + N
-        mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
+        mu_n = np.atleast_2d((state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n)
         nu_n = state['hyperparameters_']["nu"] + N
-        L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"]))/k_n
+        L_n  = state['hyperparameters_']["L"]*state['hyperparameters_']["k"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"]))/k_n
         # Update t-parameters
         t_df    = nu_n - self.dim + 1
         t_shape = L_n*(k_n+1)/(k_n*t_df)
         # Compute logLikelihood
-        logL = student_t(df = t_df, loc = mu_n, shape = t_shape).logpdf(x)
+        logL = my_student_t(df = t_df, t = np.atleast_2d(x), mu = mu_n, sigma = t_shape, dim = self.dim)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
         x = np.atleast_2d(x)
         mean = (ss.mean*(ss.N)+x)/(ss.N+1)
-        var  = (ss.N*(ss.cov + np.matmul(ss.mean.T, ss.mean)) + np.matmul(x.T, x))/(ss.N+1) - np.matmul(mean.T, mean)
-        return self.SuffStat(mean, var, ss.N+1)
+        cov  = (ss.N*(ss.cov + np.matmul(ss.mean.T, ss.mean)) + np.matmul(x.T, x))/(ss.N+1) - np.matmul(mean.T, mean)
+        return self.SuffStat(mean, cov, ss.N+1)
 
 
     def remove_datapoint_from_suffstats(self, x, ss):
         x = np.atleast_2d(x)
         if ss.N == 1:
-            return(self.SuffStat(0,0,0))
+            return(self.SuffStat(np.atleast_2d(0),np.identity(self.dim)*0,0))
         mean = (ss.mean*(ss.N)-x)/(ss.N-1)
-        var  = (ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1) - mean**2
-        return self.SuffStat(mean, var, ss.N-1)
+        cov  = (ss.N*(ss.cov + np.matmul(ss.mean.T, ss.mean)) - np.matmul(x.T, x))/(ss.N-1) - np.matmul(mean.T, mean)
+        return self.SuffStat(mean, cov, ss.N-1)
     
     def cluster_assignment_distribution(self, data_id, state):
         """
@@ -231,7 +241,7 @@ class Sampler_SE:
     def create_cluster(self, state):
         state["num_clusters_"] += 1
         cluster_id = max(state['suffstats'].keys()) + 1
-        state['suffstats'][cluster_id] = self.SuffStat(0, 0, 0)
+        state['suffstats'][cluster_id] = self.SuffStat(np.atleast_2d(0),np.identity(self.dim)*0,0)
         state['cluster_ids_'].append(cluster_id)
         return cluster_id
 
@@ -281,14 +291,14 @@ class Sampler_SE:
             S = ss[cid].cov
             N     = ss[cid].N
             k_n  = state['hyperparameters_']["k"] + N
-            mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
+            mu_n = np.atleast_2d((state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n)
             nu_n = state['hyperparameters_']["nu"] + N
             L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"]))/k_n
             # Update t-parameters
             s = stats.invwishart(df = nu_n, scale = L_n).rvs()
             t_df    = nu_n - self.dim + 1
             t_shape = L_n*(k_n+1)/(k_n*t_df)
-            m = student_t(df = t_df, loc = mu_n, shape = t_shape).rvs()
+            m = student_t(df = t_df, loc = mu_n.flatten(), shape = t_shape).rvs()
             components[i] = {'mean': m, 'cov': s, 'weight': weights[i]}
         self.mixture_samples.append(components)
     
@@ -304,6 +314,7 @@ class Sampler_SE:
                 self.gibbs_step(state)
             self.sample_mixture_parameters(state)
         self.last_state = state
+        print(state['assignment'])
         print('\n', end = '')
         return
     
@@ -345,15 +356,15 @@ class Sampler_SE:
 #        ax.plot(app, p[50], marker = '', color = 'r')
 #        ax.set_xlabel('$M_1\ [M_\\odot]$')
 #        ax.set_ylabel('$p(M)$')
-        if self.dims == 2:
+        if self.dim == 2:
             ax  = fig.add_subplot(111)
             ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.last_state['assignment'], marker = '.')
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
-        elif self.dims == 3:
+        elif self.dim == 3:
             ax  = fig.add_subplot(111, projection = '3d')
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
             ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], self.mass_samples[:,2], c = self.last_state['assignment'], marker = '.')
-        elif self.dims == 1:
+        elif self.dim == 1:
             plot_samples(self.last_state, self.output_events + '/event_{0}.pdf'.format(self.e_ID))
 #        fig = plt.figure()
 #        for i, s in enumerate(self.mixture_samples[:25]):
@@ -372,13 +383,12 @@ class Sampler_SE:
         """
         
         flags = []
-        print(1)
         self.run_sampling()
         # reconstructed events
         self.output_events = self.output_folder + '/reconstructed_events'
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
-        self.save_mixture_samples()
+        #self.save_mixture_samples()
         if self.dim < 4:
             self.plot_samples()
         self.output_samples_folder = self.output_folder + '/posterior_samples/'
@@ -389,7 +399,7 @@ class Sampler_SE:
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
         fig.savefig(self.output_folder+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
-        return 1
+        return
 
 @jit(nopython = True)
 def log_normal_density(x, x0, sigma):
