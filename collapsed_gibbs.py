@@ -24,11 +24,11 @@ class CGSampler:
                        step,
                        alpha0 = 1,
                        gamma0 = 1,
-                       b = 5,
+                       b = 30,
                        a = 3,
                        V = 1/4.,
                        m_min = 5,
-                       m_max = 50,
+                       m_max = 60,
                        output_folder = './',
                        initial_cluster_number = 5.
                        ):
@@ -329,7 +329,7 @@ class Sampler_SE:
         plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
-            ax = fig.add_subplot(5,len(self.mixture_samples[:25])/5,i+1)
+            ax = fig.add_subplot(5,int(len(self.mixture_samples[:25])/5),i+1)
             app = np.linspace(min(self.mass_samples),max(self.mass_samples),1000)
             for c in s.values():
                 p = np.exp(log_normal_density(app,c['mean'], c['sigma']))*c['weight']
