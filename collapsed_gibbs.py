@@ -8,15 +8,95 @@ from collections import namedtuple, Counter
 from scipy import stats
 from numpy import random
 from scipy.stats import multivariate_t as student_t
-from scipy.special import logsumexp
+from scipy.special import logsumexp, gammaln
 from scipy.stats import multivariate_normal as mn
+from numpy.linalg import det, inv
 
+import ray
+from ray import ActorPool
+from numba import jit
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
 """
 
-ray.init()
 
+class CGSampler:
+                
+    def __init__(self, events,
+                       burnin,
+                       n_draws,
+                       step,
+                       alpha0 = 1,
+                       gamma0 = 1,
+                       b = 30,
+                       a = 3,
+                       V = 1/4.,
+                       m_min = 5,
+                       m_max = 60,
+                       output_folder = './',
+                       initial_cluster_number = 5.
+                       ):
+        
+        self.events = events
+        self.burnin = burnin
+        self.n_draws = n_draws
+        self.step = step
+        self.m_min   = m_min
+        self.m_max   = m_max
+        # DP
+        self.alpha0 = alpha0
+        self.gamma0 = gamma0
+        # student-t
+        self.a = a
+        self.b = b
+        self.V = V
+        # miscellanea
+        self.output_folder = output_folder
+        self.icn = initial_cluster_number
+        self.event_samplers = []
+    
+    def initialise_samplers(self):
+        for i, ev in enumerate(self.events):
+            self.event_samplers.append(Sampler_SE.remote(
+                                            ev,
+                                            i+1,
+                                            self.burnin,
+                                            self.n_draws,
+                                            self.step,
+                                            self.alpha0,
+                                            self.b,
+                                            self.a,
+                                            self.V,
+                                            self.m_min,
+                                            self.m_max,
+                                            self.output_folder,
+                                            self.icn
+                                            ))
+        return
+        
+    def run_event_sampling(self):
+        self.initialise_samplers()
+        tasks = [s for s in self.event_samplers]
+        pool = ActorPool(tasks)
+        for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
+            pass
+        
+        
+ray.init(ignore_reinit_error=True)
+    
+@jit()
+def my_student_t(df, t, mu, sigma, dim):
+    """
+    https://core.ac.uk/download/pdf/81139018.pdf
+    """
+    c = gammaln((df+dim)*0.5) - (df*0.5)*np.log(np.pi*df) - gammaln(df*0.5) + 0.5*np.log(det(sigma))
+    translated = np.atleast_2d(t - mu)
+    inv_sigma  = inv(sigma)
+    arg = np.matmul(np.matmul(translated, sigma), translated.T)
+    return c + 0.5*(df+dim)*np.log1p(arg/df)
+
+
+@ray.remote
 class Sampler_SE:
     def __init__(self, mass_samples,
                        event_id,
@@ -101,7 +181,7 @@ class Sampler_SE:
         k_n  = state['hyperparameters_']["k"] + N
         mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
         nu_n = state['hyperparameters_']["nu"] + N
-        L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"])/k_n
+        L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"]))/k_n
         # Update t-parameters
         t_df    = nu_n - self.dim + 1
         t_shape = L_n*(k_n+1)/(k_n*t_df)
@@ -203,7 +283,7 @@ class Sampler_SE:
             k_n  = state['hyperparameters_']["k"] + N
             mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
             nu_n = state['hyperparameters_']["nu"] + N
-            L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"])/k_n
+            L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"]))/k_n
             # Update t-parameters
             s = stats.invwishart(df = nu_n, scale = L_n).rvs()
             t_df    = nu_n - self.dim + 1
@@ -269,11 +349,11 @@ class Sampler_SE:
             ax  = fig.add_subplot(111)
             ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.last_state['assignment'], marker = '.')
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
-        else if self.dims == 3:
+        elif self.dims == 3:
             ax  = fig.add_subplot(111, projection = '3d')
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
             ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], self.mass_samples[:,2], c = self.last_state['assignment'], marker = '.')
-        else if self.dims == 1:
+        elif self.dims == 1:
             plot_samples(self.last_state, self.output_events + '/event_{0}.pdf'.format(self.e_ID))
 #        fig = plt.figure()
 #        for i, s in enumerate(self.mixture_samples[:25]):

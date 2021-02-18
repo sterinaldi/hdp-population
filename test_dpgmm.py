@@ -14,8 +14,7 @@ for event in event_files:
 def normal_density(x, x0, sigma):
     return np.exp(-(x-x0)**2/(2*sigma**2))/(np.sqrt(2*np.pi)*sigma)
 
-sampler = DPGMM.Sampler_SE(mass_samples = events[0],
-                        event_id = 1,
+sampler = DPGMM.CGSampler(events = events,
                         n_draws = 10,
                         burnin  = 100,
                         step    = 10,
