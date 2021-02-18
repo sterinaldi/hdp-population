@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 from mpl_toolkits.mplot3d import Axes3D
+import pickle
 
 from collections import namedtuple, Counter
 from scipy import stats
@@ -30,11 +31,11 @@ class CGSampler:
                        gamma0 = 1,
                        L = 1,
                        k = 1,
-                       nu = 2,
+                       nu = 3,
                        m_min = 5,
                        m_max = 60,
                        output_folder = './',
-                       initial_cluster_number = 2.
+                       initial_cluster_number = 5
                        ):
         
         self.events = events
@@ -124,7 +125,10 @@ class Sampler_SE:
                        ):
         
         self.mass_samples  = mass_samples
-        self.dim     = np.shape(self.mass_samples[0])[0]
+        try:
+            self.dim = np.shape(self.mass_samples[0])[0]
+        except:
+            self.dim = 1
         self.e_ID    = event_id
         self.burnin  = burnin
         self.n_draws = n_draws
@@ -314,12 +318,13 @@ class Sampler_SE:
                 self.gibbs_step(state)
             self.sample_mixture_parameters(state)
         self.last_state = state
-        print(state['assignment'])
         print('\n', end = '')
         return
     
     def save_mixture_samples(self):
-        np.savetxt(self.output_folder + '/mixture_samples.txt', np.array(self.mixture_samples))
+        with open(self.output_folder+ '/mixture_samples.pkl', 'wb') as f:
+            pickle.dump(self.mixture_samples, f, pickle.HIGHEST_PROTOCOL)
+
     
     def display_config(self):
         print('MCMC Gibbs sampler')
@@ -362,10 +367,10 @@ class Sampler_SE:
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         elif self.dim == 3:
             ax  = fig.add_subplot(111, projection = '3d')
-            plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
             ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], self.mass_samples[:,2], c = self.last_state['assignment'], marker = '.')
+            plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         elif self.dim == 1:
-            plot_samples(self.last_state, self.output_events + '/event_{0}.pdf'.format(self.e_ID))
+            plot_clusters(self.last_state, self.output_events + '/event_{0}.pdf'.format(self.e_ID))
 #        fig = plt.figure()
 #        for i, s in enumerate(self.mixture_samples[:25]):
 #            ax = fig.add_subplot(5,len(self.mixture_samples[:25])/5,i+1)
@@ -388,7 +393,7 @@ class Sampler_SE:
         self.output_events = self.output_folder + '/reconstructed_events'
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
-        #self.save_mixture_samples()
+        self.save_mixture_samples()
         if self.dim < 4:
             self.plot_samples()
         self.output_samples_folder = self.output_folder + '/posterior_samples/'
