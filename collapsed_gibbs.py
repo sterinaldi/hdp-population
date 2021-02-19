@@ -175,11 +175,11 @@ class CGSampler:
         m = int((seconds%3600)/60)
         s = int(seconds - h*3600+m*60)
         print('Elapsed time: {0}h {1}m {2}s'.format(h, m, s))
-        
+        return
         
 ray.init(ignore_reinit_error=True, log_to_driver=False)
 
-#@jit()
+@jit(forceobj=True)
 def my_student_t(df, t):
     b = betaln(0.5, df*0.5)
     return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
