@@ -51,7 +51,8 @@ class CGSampler:
                        output_folder = './',
                        initial_cluster_number = 5.,
                        process_events = True,
-                       n_parallel_threads = 8
+                       n_parallel_threads = 8,
+                       injected_density = None
                        ):
         
         self.events = events
@@ -79,6 +80,7 @@ class CGSampler:
         self.verbose = verbose
         self.process_events = process_events
         self.n_parallel_threads = n_parallel_threads
+        self.injected_density = injected_density
     
     def initialise_samplers(self):
         for i, ev in enumerate(self.events):
@@ -158,7 +160,8 @@ class CGSampler:
                        m_max = self.m_max,
                        verbose = self.verbose,
                        output_folder = self.mf_folder,
-                       initial_cluster_number = self.icn
+                       initial_cluster_number = self.icn,
+                       injected_density = self.injected_density
                        )
         
         sampler.run()
@@ -173,7 +176,7 @@ class CGSampler:
         seconds = int(end_time - init_time)
         h = int(seconds/3600.)
         m = int((seconds%3600)/60)
-        s = int(seconds - h*3600+m*60)
+        s = int(seconds - h*3600-m*60)
         print('Elapsed time: {0}h {1}m {2}s'.format(h, m, s))
         return
         
@@ -493,7 +496,8 @@ class MF_Sampler():
                        m_max = 50,
                        output_folder = './',
                        verbose = True,
-                       initial_cluster_number = 5.
+                       initial_cluster_number = 5.,
+                       injected_density = None
                        ):
                        
         self.mass_samples  = mass_samples
@@ -520,6 +524,7 @@ class MF_Sampler():
         self.mixture_samples = []
         self.n_clusters = []
         self.verbose = verbose
+        self.injected_density = injected_density
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
@@ -708,6 +713,8 @@ class MF_Sampler():
         ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
         ax.plot(app, p[50], marker = '', color = 'r')
+        if self.injected_density is not None:
+            ax.plot(app, self.injected_density(app), color = 'k', marker = '')
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
