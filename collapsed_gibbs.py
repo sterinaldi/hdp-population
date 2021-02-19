@@ -179,7 +179,7 @@ class CGSampler:
         
 ray.init(ignore_reinit_error=True, log_to_driver=False)
 
-#g@jit()
+#@jit()
 def my_student_t(df, t):
     b = betaln(0.5, df*0.5)
     return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
