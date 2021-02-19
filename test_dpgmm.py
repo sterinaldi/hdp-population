@@ -20,13 +20,11 @@ pars_2 = [35, 2]
 
 sampler = DPGMM.CGSampler(events = events,
                         #mass_b  = [5,50],
-                        n_draws = 10,
-                        burnin  = 100,
-                        step    = 10,
+                        samp_settings = [100,10,10],
                         alpha0  = 1,
                         gamma0   = 1,
                         output_folder = output,
-                        process_events = False
+                        process_events = True
                         # injected_density = lambda x : normal_density(x, *pars)
                         # injected_density = lambda x : (normal_density(x, *pars_1) + normal_density(x, *pars_2))/2.
                         )

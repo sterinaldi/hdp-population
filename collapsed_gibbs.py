@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import re
+import warnings
 
 from collections import namedtuple, Counter
 from scipy import stats
@@ -9,6 +10,8 @@ from numpy import random
 from scipy.stats import t as student_t
 from scipy.special import logsumexp, betaln, gammaln
 from scipy.interpolate import interp1d
+
+from time import perf_counter
 
 from numba import jit
 import ray
@@ -35,36 +38,39 @@ def natural_keys(text):
 class CGSampler:
                 
     def __init__(self, events,
-                       burnin,
-                       n_draws,
-                       step,
+                       samp_settings, # burnin, draws, step (list)
+                       samp_settings_ev = None,
                        alpha0 = 1,
                        gamma0 = 1,
-                       b = 5,
-                       a = 3,
-                       V = 1/4.,
+                       hyperpars_ev = None,
+                       hyperpars = [1,3,1/4.], # a, b, V
                        delta_M = 5,
                        m_min = 5,
-                       m_max = 60,
+                       m_max = 70,
                        verbose = True,
                        output_folder = './',
                        initial_cluster_number = 5.,
-                       process_events = True
+                       process_events = True,
+                       n_parallel_threads = 8
                        ):
         
         self.events = events
-        self.burnin = burnin
-        self.n_draws = n_draws
-        self.step = step
+        self.burnin_mf, self.n_draws_mf, self.step_mf = samp_settings
+        if samp_settings_ev is not None:
+            self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings_ev
+        else:
+            self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings
         self.m_min   = m_min
         self.m_max   = m_max
         # DP
         self.alpha0 = alpha0
         self.gamma0 = gamma0
         # student-t
-        self.a = a
-        self.b = b
-        self.V = V
+        self.a_mf, self.b_mf, self.V_mf = hyperpars
+        if hyperpars_ev is not None:
+            self.a_ev, self.b_ev, self.V_ev = hyperpars_ev
+        else:
+            self.a_ev, self.b_ev, self.V_ev = hyperpars
         # miscellanea
         self.output_folder = output_folder
         self.icn = initial_cluster_number
@@ -72,19 +78,20 @@ class CGSampler:
         self.delta_M = delta_M
         self.verbose = verbose
         self.process_events = process_events
+        self.n_parallel_threads = n_parallel_threads
     
     def initialise_samplers(self):
         for i, ev in enumerate(self.events):
             self.event_samplers.append(Sampler_SE.remote(
                                             ev,
                                             i+1,
-                                            self.burnin,
-                                            self.n_draws,
-                                            self.step,
+                                            self.burnin_ev,
+                                            self.n_draws_ev,
+                                            self.step_ev,
                                             self.alpha0,
-                                            self.b,
-                                            self.a,
-                                            self.V,
+                                            self.b_ev,
+                                            self.a_ev,
+                                            self.V_ev,
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
@@ -95,12 +102,15 @@ class CGSampler:
         
     def run_event_sampling(self):
         self.initialise_samplers()
-        tasks = [s for s in self.event_samplers]
-        pool = ActorPool(tasks)
+        all_tasks = [s for s in self.event_samplers]
+        # slicing tasks (is there a better way to fix the number of parallel-working actors?)
+        tasks = [all_tasks[x:x+self.n_parallel_threads] for x in range(0, len(all_tasks), self.n_parallel_threads)]
         i = 0
-        for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
-            i += 1
-            print('\rProcessed {0}/{1} events'.format(i, len(self.events)))
+        for t in tasks:
+            pool = ActorPool(t)
+            for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(t))):
+                i += 1
+                print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)))
         return
             
     def load_mixtures(self):
@@ -117,8 +127,8 @@ class CGSampler:
         print('------------------------')
         print('Loaded {0} events'.format(len(self.events)))
         print('Concentration parameters:\nalpha0 = {0}\tgamma0 = {1}'.format(self.alpha0, self.gamma0))
-        print('Burn-in: {0} samples'.format(self.burnin))
-        print('Samples: {0} - 1 every {1}'.format(self.n_draws, self.step))
+        print('Burn-in: {0} samples'.format(self.burnin_mf))
+        print('Samples: {0} - 1 every {1}'.format(self.n_draws_mf, self.step_mf))
         print('------------------------')
         return
     
@@ -133,18 +143,17 @@ class CGSampler:
             os.mkdir(self.mf_folder)
             
         sampler = MF_Sampler(self.mt,
-                       0,
                        self.log_mass_posteriors,
-                       self.burnin,
-                       self.n_draws,
-                       self.step,
+                       self.burnin_mf,
+                       self.n_draws_mf,
+                       self.step_mf,
                        delta_M = self.delta_M,
                        alpha0 = self.gamma0,
                        #eventualmente differenziare iperparametri interni ed esterni
                        #ora è così solo per finalità di test
-                       b = self.b,
-                       a = self.a,
-                       V = self.V,
+                       b = self.b_mf,
+                       a = self.a_mf,
+                       V = self.V_mf,
                        m_min = self.m_min,
                        m_max = self.m_max,
                        verbose = self.verbose,
@@ -155,34 +164,36 @@ class CGSampler:
         sampler.run()
     
     def run(self):
+        init_time = perf_counter()
         self.display_config()
         if self.process_events:
             self.run_event_sampling()
         self.run_mass_function_sampling()
+        end_time = perf_counter()
+        seconds = int(end_time - init_time)
+        h = int(seconds/3600.)
+        m = int((seconds%3600)/60)
+        s = int(seconds - h*3600+m*60)
+        print('Elapsed time: {0}h {1}m {2}s'.format(h, m, s))
         
         
-ray.init(ignore_reinit_error=True)
-    
-@jit()
-def my_betaln(a,b, n):
-    beta = 0.
-    n = int(n)
-    x = np.linspace(0,1,n)
-    dx = 1./n
-    for xi in x:
-        beta += (x**(a-1)*(1-x)**(b-1))*dx
-    return np.log(beta)
+ray.init(ignore_reinit_error=True, log_to_driver=False)
 
-@jit(nopython=True)
+#g@jit()
 def my_student_t(df, t):
-    b = 0.
-    dx = 1./1000.
-    x = np.linspace(dx,1,999)
-    for xi in x:
-        b += (xi**(-0.5)*(1-xi)**(df*0.5-1))*dx
-    b = np.log(b)
-
+    b = betaln(0.5, df*0.5)
     return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
+
+#@jit(nopython=True)
+#def my_student_t(df, t):
+#    b = 0.
+#    dx = 1./1000.
+#    x = np.linspace(dx,1,999)
+#    for xi in x:
+#        b += (xi**(-0.5)*(1-xi)**(df*0.5-1))*dx
+#    b = np.log(b)
+#
+#    return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
     
 @ray.remote
 class Sampler_SE:
@@ -451,7 +462,7 @@ class Sampler_SE:
         
         self.run_sampling()
         # reconstructed events
-        self.output_events = self.output_folder + '/reconstructed_events'
+        self.output_events = self.output_folder + '/reconstructed_events/'
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
         self.plot_samples()
@@ -462,14 +473,13 @@ class Sampler_SE:
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_folder+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
+        fig.savefig(self.output_events+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
         return
 
 class MF_Sampler():
     # inheriting from actor class is not currently supported
 
     def __init__(self, mass_samples,
-                       event_id,
                        log_mass_posteriors,
                        burnin,
                        n_draws,
@@ -487,7 +497,6 @@ class MF_Sampler():
                        ):
                        
         self.mass_samples  = mass_samples
-        self.e_ID    = event_id
         self.burnin  = burnin
         self.n_draws = n_draws
         self.step    = step
@@ -685,14 +694,14 @@ class MF_Sampler():
         p = {}
         
         fig = plt.figure()
-        fig.suptitle('Event {0}'.format(self.e_ID))
+        fig.suptitle('Mass function')
         ax  = fig.add_subplot(111)
         ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
         prob = []
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
         p[50] = np.percentile(prob, 50, axis = 1)
-        np.savetxt(self.output_events + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[50]]).T)
+        np.savetxt(self.output_events + '/log_rec_prob_mf.txt', np.array([app, p[50]]).T)
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
@@ -701,7 +710,7 @@ class MF_Sampler():
         ax.plot(app, p[50], marker = '', color = 'r')
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
             ax = fig.add_subplot(5,int(len(self.mixture_samples[:25])/5),i+1)
@@ -711,18 +720,16 @@ class MF_Sampler():
                 ax.plot(app,p, linewidth = 0.4)
                 ax.set_xlabel('$M_1\ [M_\\odot]$')
         plt.tight_layout()
-        fig.savefig(self.output_events +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        fig.savefig(self.output_events +'/components_mf.pdf', bbox_inches = 'tight')
         
     def run(self):
         """
         Runs sampler, saves samples and produces output plots.
         """
         
-        if self.verbose:
-            self.display_config()
         self.run_sampling()
         # reconstructed events
-        self.output_events = self.output_folder + '/reconstructed_events'
+        self.output_events = self.output_folder + '/reconstructed_events/'
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
         self.plot_samples()
@@ -733,7 +740,7 @@ class MF_Sampler():
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_folder+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
+        fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
         return
 
 
@@ -745,6 +752,8 @@ class MF_Sampler():
     def update_single_posterior(self, e_index):
         M_old = self.mass_samples[e_index]
         M_new = draw_mass(M_old, self.delta_M)
+        if not self.m_min < M_new < self.m_max:
+            return
         p_old = self.log_mass_posteriors[e_index](M_old)
         p_new = self.log_mass_posteriors[e_index](M_new)
         
