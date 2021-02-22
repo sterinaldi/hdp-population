@@ -35,7 +35,8 @@ class CGSampler:
                        m_min = 5,
                        m_max = 60,
                        output_folder = './',
-                       initial_cluster_number = 5
+                       initial_cluster_number = 5,
+                       min_cluster_occupation = 10
                        ):
         
         self.events = events
@@ -55,6 +56,7 @@ class CGSampler:
         self.output_folder = output_folder
         self.icn = initial_cluster_number
         self.event_samplers = []
+        self.min_cluster_occupation = min_cluster_occupation
     
     def initialise_samplers(self):
         for i, ev in enumerate(self.events):
@@ -303,7 +305,7 @@ class Sampler_SE:
             t_df    = nu_n - self.dim + 1
             t_shape = L_n*(k_n+1)/(k_n*t_df)
             m = student_t(df = t_df, loc = mu_n.flatten(), shape = t_shape).rvs()
-            components[i] = {'mean': m, 'cov': s, 'weight': weights[i]}
+            components[i] = {'mean': m, 'cov': s, 'weight': weights[i], 'N': N}
         self.mixture_samples.append(components)
     
     def run_sampling(self):
@@ -324,7 +326,20 @@ class Sampler_SE:
     def save_mixture_samples(self):
         with open(self.output_folder+ '/mixture_samples.pkl', 'wb') as f:
             pickle.dump(self.mixture_samples, f, pickle.HIGHEST_PROTOCOL)
-
+        samples = {}
+        for sample in self.mixture_samples:
+            for cluster, key in zip(sample.values, sample.keys):
+                if not key in samples.keys():
+                    samples[key] = []
+                if cluster['N'] > self.min_cluster_occupation:
+                    list = list(samples['mean']) + [item for row in samples['sigma'] for item in row]
+                    list.append(N)
+                    samples[key].append(np.array(list))
+        cluster_folder = self.output_folder+'/clusters/'
+        if not os.path.exists(cluster_folder):
+            os.mkdir(cluster_folder)
+        for i, cluster in enumerate(samples.values()):
+            np.savetxt(cluster_folder + 'cluster_{0}.txt'.format(i), cluster.reshape(1,cluster.shape[0]))
     
     def display_config(self):
         print('MCMC Gibbs sampler')
