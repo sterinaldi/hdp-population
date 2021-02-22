@@ -24,7 +24,7 @@ def posterior_sampler(m_true, sigma):
     
 if __name__ == '__main__':
 
-    out_folder = '/Users/stefanorinaldi/Documents/mass_inference/universe_1'
+    out_folder = '/Users/stefanorinaldi/Documents/mass_inference/universe_2/'
     if not os.path.exists(out_folder):
         os.mkdir(out_folder)
     post_folder = out_folder+'/events/'
@@ -32,7 +32,7 @@ if __name__ == '__main__':
 
     if not os.path.exists(out_folder+'/events/'):
         os.mkdir(post_folder)
-    if not os.path.exists(out_folder+'/plots'):
+    if not os.path.exists(out_folder+'/plots/'):
         os.mkdir(plot_folder)
 
     n_bbh = 200
@@ -50,12 +50,13 @@ if __name__ == '__main__':
     ax  = fig.add_subplot(111)
     for i in range(n_bbh):
         samples = []
-        #m = mass_sampler(alpha, m_max, m_min)
-        m = normal(30, 3)
+        m = mass_sampler(alpha, m_max, m_min)
+        # m = normal(30, 3)
         sigma = sigma_sampler(s_min, s_max)
-        for _ in range(n_samples):
-            samples.append(posterior_sampler(m, sigma))#,k,b))
+#        for _ in range(n_samples):
+            #samples.append(posterior_sampler(m, sigma))#,k,b))
             #samples.append(mass_sampler(alpha, m_max, m_min))
+        samples = normal(m, sigma, n_samples)
         ax.clear()
         app = np.linspace(max(samples), min(samples), 1000)
         np.savetxt(post_folder+'/event_{0}.txt'.format(i+1), np.array(samples))
