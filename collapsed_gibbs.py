@@ -29,7 +29,7 @@ class CGSampler:
                        step,
                        alpha0 = 1,
                        gamma0 = 1,
-                       L = 1,
+                       L = 10**-2,
                        k = 1,
                        nu = 3,
                        m_min = 5,
@@ -73,7 +73,8 @@ class CGSampler:
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
-                                            self.icn
+                                            self.icn,
+                                            self.min_cluster_occupation
                                             ))
         return
         
@@ -123,7 +124,8 @@ class Sampler_SE:
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
-                       initial_cluster_number = 5.
+                       initial_cluster_number = 10,
+                       min_cluster_occupation = 0
                        ):
         
         self.mass_samples  = mass_samples
@@ -152,6 +154,7 @@ class Sampler_SE:
         self.output_folder = output_folder
         self.mixture_samples = []
         self.n_clusters = []
+        self.min_cluster_occupation = min_cluster_occupation
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
@@ -328,18 +331,20 @@ class Sampler_SE:
             pickle.dump(self.mixture_samples, f, pickle.HIGHEST_PROTOCOL)
         samples = {}
         for sample in self.mixture_samples:
-            for cluster, key in zip(sample.values, sample.keys):
+            for cluster, key in zip(sample.values(), sample.keys()):
                 if not key in samples.keys():
                     samples[key] = []
                 if cluster['N'] > self.min_cluster_occupation:
-                    list = list(samples['mean']) + [item for row in samples['sigma'] for item in row]
-                    list.append(N)
-                    samples[key].append(np.array(list))
+                    l = list(cluster['mean']) + [item for row in cluster['cov'] for item in row]
+                    l.append(cluster['N'])
+                    samples[key].append(l)
         cluster_folder = self.output_folder+'/clusters/'
         if not os.path.exists(cluster_folder):
             os.mkdir(cluster_folder)
         for i, cluster in enumerate(samples.values()):
-            np.savetxt(cluster_folder + 'cluster_{0}.txt'.format(i), cluster.reshape(1,cluster.shape[0]))
+            if cluster: # prune empty clusters
+                cluster = np.array(cluster)
+                np.savetxt(cluster_folder + 'cluster_{0}.txt'.format(i), cluster)
     
     def display_config(self):
         print('MCMC Gibbs sampler')
