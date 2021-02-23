@@ -44,7 +44,7 @@ sampler = DPGMM.CGSampler(events = events,
                         gamma0   = 1,
                         delta_M = 7,
                         output_folder = output,
-                        process_events = False,
+                        process_events = True,
                         initial_cluster_number = 3.,
                         n_parallel_threads = 60
                         #injected_density = lambda x : normal_density(x, *pars)
