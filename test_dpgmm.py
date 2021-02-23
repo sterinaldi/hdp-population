@@ -2,7 +2,7 @@ import numpy as np
 import os
 import collapsed_gibbs as DPGMM
 
-events_path = '/home/srinaldi/srinaldi-work1/O3a/Events/'
+events_path = '/home/srinaldi/srinaldi-work1/O3a/Events_source_frame/'
 event_files = [f for f in os.listdir(events_path) if not f.startswith('.')]
 events      = []
 output      = '/home/srinaldi/srinaldi-work1/O3a/'
@@ -38,11 +38,11 @@ sampler = DPGMM.CGSampler(events = events,
                         #mass_b  = [5,50],
                         m_min = 3,
                         m_max = 500,
-                        samp_settings = [10000,1000,100],
+                        samp_settings = [1000,20,100],
                         samp_settings_ev = [100,10,100],
                         alpha0  = 1,
                         gamma0   = 1,
-                        delta_M = 2,
+                        delta_M = 7,
                         output_folder = output,
                         process_events = False,
                         initial_cluster_number = 3.,
