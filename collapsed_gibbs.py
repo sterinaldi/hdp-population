@@ -123,9 +123,11 @@ class Sampler_SE:
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
-                       initial_cluster_number = 5.
+                       initial_cluster_number = 5.,
+                       min_cluster_occupation = 1
                        ):
         
+        self.min_cluster_occupation = min_cluster_occupation
         self.mass_samples  = mass_samples
         try:
             self.dim = np.shape(self.mass_samples[0])[0]
@@ -328,13 +330,13 @@ class Sampler_SE:
             pickle.dump(self.mixture_samples, f, pickle.HIGHEST_PROTOCOL)
         samples = {}
         for sample in self.mixture_samples:
-            for cluster, key in zip(sample.values, sample.keys):
+            for cluster, key in zip(sample.values(), sample.keys()):
                 if not key in samples.keys():
                     samples[key] = []
                 if cluster['N'] > self.min_cluster_occupation:
-                    list = list(samples['mean']) + [item for row in samples['sigma'] for item in row]
-                    list.append(N)
-                    samples[key].append(np.array(list))
+                    l = list(sample[key]['mean']) + [item for row in sample[key]['cov'] for item in row]
+                    l.append(sample[key]['N'])
+                    samples[key].append(np.array(l))
         cluster_folder = self.output_folder+'/clusters/'
         if not os.path.exists(cluster_folder):
             os.mkdir(cluster_folder)
@@ -408,7 +410,7 @@ class Sampler_SE:
         self.output_events = self.output_folder + '/reconstructed_events'
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
-        self.save_mixture_samples()
+#        self.save_mixture_samples()
         if self.dim < 4:
             self.plot_samples()
         self.output_samples_folder = self.output_folder + '/posterior_samples/'
