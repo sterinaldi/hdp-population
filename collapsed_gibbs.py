@@ -25,11 +25,12 @@ Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
 # list.sort(key = natural_keys)
 
 def sort_matrix(a, axis = -1):
-    keys = np.copy(a[:,axis])
+    mat = [[m, f] for m, f in zip(a[0], a[1])]
+    keys = np.copy(mat[:,axis])
     sorted_keys = np.sort(np.copy(keys))
     indexes = [np.where(el == sorted_keys)[0][0] for el in keys]
-    sorted_a = np.array([np.copy(a[i]) for i in indexes])
-    return sorted_a
+    sorted_mat = np.array([np.copy(mat[i]) for i in indexes])
+    return sorted_mat[:,0], sorted_mat[:,1]
     
 
 
