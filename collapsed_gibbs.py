@@ -150,7 +150,7 @@ class CGSampler:
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
-        sorted = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
+        sorted = sort_matrix(a = [self.mt, self.log_mass_posteriors], axis = 0)
         self.mt = sorted[0]
         self.log_mass_posteriors = sorted[1]
         self.mf_folder = self.output_folder+'/mass_function/'
