@@ -528,9 +528,15 @@ class MF_Sampler():
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
+        bounds = np.linspace(0, max(samples)+1, int(self.icn)+1)
+        assign = np.zeros(len(samples))
+        for j, s in enumerate(samples):
+            for i in range(len(self.icn)):
+                if bounds[i] < s < bounds[i+1]:
+                    assign[j] = i
         state = {
             'cluster_ids_': cluster_ids,
-            'data_': np.sort(samples),
+            'data_': samples,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'hyperparameters_': {
@@ -540,7 +546,7 @@ class MF_Sampler():
                 "mu": self.mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
-            'assignment': [int((a - a%(len(samples)/self.icn))/(len(samples)/self.icn)) for a in range(len(samples))],
+            'assignment': list(assign),
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             }
         self.update_suffstats(state)
