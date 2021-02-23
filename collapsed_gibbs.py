@@ -534,6 +534,7 @@ class MF_Sampler():
             for i in range(int(self.icn)):
                 if bounds[i] < s < bounds[i+1]:
                     assign[j] = i
+        print(assign)
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
