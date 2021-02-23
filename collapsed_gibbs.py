@@ -531,7 +531,7 @@ class MF_Sampler():
         bounds = np.linspace(0, max(samples)+1, int(self.icn)+1)
         assign = np.zeros(len(samples))
         for j, s in enumerate(samples):
-            for i in range(int(self.icn):
+            for i in range(int(self.icn)):
                 if bounds[i] < s < bounds[i+1]:
                     assign[j] = i
         state = {
