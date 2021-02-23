@@ -35,7 +35,7 @@ class CGSampler:
                        m_min = 5,
                        m_max = 60,
                        output_folder = './',
-                       initial_cluster_number = 5,
+                       initial_cluster_number = 10,
                        min_cluster_occupation = 10
                        ):
         
@@ -158,6 +158,9 @@ class Sampler_SE:
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
+        assig = np.zeros(len(samples))
+        for i in range(int(self.icn)):
+            assig[i*(int(len(samples)/self.icn)+1):(i+1)*(int(len(samples)/self.icn)+1)] = i
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
@@ -170,9 +173,10 @@ class Sampler_SE:
                 "mu": self.mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
-            'assignment': [int((a - a%(len(samples)/self.icn))/(len(samples)/self.icn)) for a in range(len(samples))],
+            'assignment': list(assig),
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             }
+        print(state['assignment'])
         self.update_suffstats(state)
         return state
     
