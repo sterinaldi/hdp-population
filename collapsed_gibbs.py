@@ -24,6 +24,15 @@ Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
 # natural sorting.
 # list.sort(key = natural_keys)
 
+def sort_matrix(a, axis = -1):
+    keys = np.copy(a[:,axis])
+    sorted_keys = np.sort(np.copy(keys))
+    indexes = [np.where(el == sorted_keys)[0][0] for el in keys]
+    sorted_a = np.array([np.copy(a[i]) for i in indexes])
+    return sorted_a
+    
+
+
 def atoi(text):
     return int(text) if text.isdigit() else text
 
@@ -139,6 +148,9 @@ class CGSampler:
     
     def run_mass_function_sampling(self):
         self.load_mixtures()
+        sorted = sort_matrix([self.mass_function, self.log_mass_posteriors], axis = 0)
+        self.mass_function = sorted[0]
+        self.log_mass_posteriors = sorted[1]
         self.initialise_mt_samples()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
@@ -530,7 +542,7 @@ class MF_Sampler():
         cluster_ids = list(np.arange(int(self.icn)))
         state = {
             'cluster_ids_': cluster_ids,
-            'data_': np.sort(samples),
+            'data_': samples,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'hyperparameters_': {
