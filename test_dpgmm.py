@@ -2,10 +2,10 @@ import numpy as np
 import os
 import collapsed_gibbs as DPGMM
 
-events_path = '/Users/stefanorinaldi/Documents/mass_inference/universe_2/events/'
+events_path = '/home/srinaldi/srinaldi-work1/O3a/Events/'
 event_files = [f for f in os.listdir(events_path) if not f.startswith('.')]
 events      = []
-output      = '/Users/stefanorinaldi/Documents/mass_inference/universe_2/'
+output      = '/home/srinaldi/srinaldi-work1/O3a/'
 
 for event in event_files:
     events.append(np.genfromtxt(events_path+event))
@@ -30,20 +30,25 @@ pars_1 = [30, 3]
 pars_2 = [35, 2]
 
 
-pars_mf = [1.1,10,60]
-norm = norm_mf(pars_mf)
-pars_mf.append(norm)
+#pars_mf = [1.1,10,60]
+#norm = norm_mf(pars_mf)
+#pars_mf.append(norm)
 
 sampler = DPGMM.CGSampler(events = events,
                         #mass_b  = [5,50],
-                        samp_settings = [100,10,100],
+                        m_min = 3,
+                        m_max = 500,
+                        samp_settings = [1000,100,100],
+                        samp_settings_ev = [100,10,100],
                         alpha0  = 1,
-                        gamma0   = 3,
+                        gamma0   = 1,
                         delta_M = 2,
                         output_folder = output,
                         process_events = True,
+                        initial_cluster_number = 3.,
+                        n_parallel_threads = 60
                         #injected_density = lambda x : normal_density(x, *pars)
-                        injected_density = lambda x : mass_function(x, *pars_mf)
+                        # injected_density = lambda x : mass_function(x, *pars_mf)
                         )
                         
 sampler.run()
