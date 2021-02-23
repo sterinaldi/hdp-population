@@ -25,8 +25,7 @@ Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
 # list.sort(key = natural_keys)
 
 def sort_matrix(a, axis = -1):
-    mat = [[m, f] for m, f in zip(a[0], a[1])]
-    print(axis)
+    mat = np.array([[m, f] for m, f in zip(a[0], a[1])])
     keys = np.copy(mat[:,axis])
     sorted_keys = np.sort(np.copy(keys))
     indexes = [np.where(el == sorted_keys)[0][0] for el in keys]
