@@ -2,6 +2,7 @@ import numpy as np
 import os
 import collapsed_gibbs as DPGMM
 import ray
+import cpnest.model
 
 events_path = '/Users/stefanorinaldi/Documents/mass_inference/multidim/events/'
 event_files = [f for f in os.listdir(events_path) if not f.startswith('.')]
