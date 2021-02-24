@@ -100,7 +100,7 @@ class CGSampler:
         for i, ev in enumerate(self.events[marker:marker+self.n_parallel_threads]):
             event_samplers.append(Sampler_SE.remote(
                                             ev,
-                                            i+1,
+                                            marker + i+1,
                                             self.burnin_ev,
                                             self.n_draws_ev,
                                             self.step_ev,
