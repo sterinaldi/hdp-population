@@ -94,6 +94,7 @@ class CGSampler:
         self.process_events = process_events
         self.n_parallel_threads = n_parallel_threads
         self.injected_density = injected_density
+        self.output_recprob = self.output_folder + '/reconstructed_events/rec_prob/'
     
     def initialise_samplers(self, marker):
         event_samplers = []
