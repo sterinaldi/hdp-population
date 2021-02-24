@@ -123,13 +123,13 @@ class CGSampler:
             pool = ActorPool(tasks)
             for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
                 i += 1
-                print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)))
+                print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
         return
-            
+    
     def load_mixtures(self):
         print('Loading mixtures...')
         self.log_mass_posteriors = []
-        prob_files = [self.output_folder+'/reconstructed_events/'+f for f in os.listdir(self.output_folder+'/reconstructed_events/') if f.startswith('log_rec_prob_')]
+        prob_files = [self.output_recprob+f for f in os.listdir(self.output_recprob) if f.startswith('log_rec_prob_')]
         prob_files.sort(key = natural_keys)
         for prob in prob_files:
             rec_prob = np.genfromtxt(prob)
@@ -202,17 +202,6 @@ ray.init(ignore_reinit_error=True, log_to_driver=False)
 def my_student_t(df, t):
     b = betaln(0.5, df*0.5)
     return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
-
-#@jit(nopython=True)
-#def my_student_t(df, t):
-#    b = 0.
-#    dx = 1./1000.
-#    x = np.linspace(dx,1,999)
-#    for xi in x:
-#        b += (xi**(-0.5)*(1-xi)**(df*0.5-1))*dx
-#    b = np.log(b)
-#
-#    return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
     
 @ray.remote
 class Sampler_SE:
@@ -453,7 +442,8 @@ class Sampler_SE:
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
         p[50] = np.percentile(prob, 50, axis = 1)
-        np.savetxt(self.output_events + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[50]]).T)
+
+        np.savetxt(self.output_recprob + /log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[50]]).T)
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
@@ -462,7 +452,8 @@ class Sampler_SE:
         ax.plot(app, p[50], marker = '', color = 'r')
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        
+        plt.savefig(self.output_pltevents + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
             ax = fig.add_subplot(5,int(len(self.mixture_samples[:25])/5),i+1)
@@ -472,7 +463,7 @@ class Sampler_SE:
                 ax.plot(app,p, linewidth = 0.4)
                 ax.set_xlabel('$M_1\ [M_\\odot]$')
         plt.tight_layout()
-        fig.savefig(self.output_events +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        fig.savefig(self.output_components +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         
     def run(self):
         """
@@ -484,20 +475,29 @@ class Sampler_SE:
         self.output_events = self.output_folder + '/reconstructed_events/'
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
+        if not os.path.exists(self.output_events + '/rec_prob/'):
+            os.mkdir(self.output_events + '/rec_prob/')
+        self.output_recprob = self.output_events + '/rec_prob/'
+        if not os.path.exists(self.output_events + '/n_clusters/'):
+            os.mkdir(self.output_events + '/n_clusters/')
+        self.output_n_clusters = self.output_events + '/n_clusters/'
+        if not os.path.exists(self.output_events + '/events/'):
+            os.mkdir(self.output_events + '/events/')
+        self.output_pltevents = self.output_events + '/events/'
+        if not os.path.exists(self.output_events + '/components/'):
+            os.mkdir(self.output_events + '/components/')
+        self.output_components = self.output_events + '/componnts/'
         self.plot_samples()
-        self.output_samples_folder = self.output_folder + '/posterior_samples/'
-        if not os.path.exists(self.output_samples_folder):
-            os.mkdir(self.output_samples_folder)
+        
             
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_events+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
+        fig.savefig(self.output_n_clusters+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
         return
 
 class MF_Sampler():
     # inheriting from actor class is not currently supported
-
     def __init__(self, mass_samples,
                        log_mass_posteriors,
                        burnin,
@@ -765,9 +765,6 @@ class MF_Sampler():
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
         self.plot_samples()
-        self.output_samples_folder = self.output_folder + '/posterior_samples/'
-        if not os.path.exists(self.output_samples_folder):
-            os.mkdir(self.output_samples_folder)
             
         fig = plt.figure()
         ax = fig.add_subplot(111)
