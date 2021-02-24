@@ -26,10 +26,11 @@ Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
 
 def sort_matrix(a, axis = -1):
     mat = np.array([[m, f] for m, f in zip(a[0], a[1])])
-    keys = np.copy(mat[:,axis])
-    sorted_keys = np.sort(np.copy(keys))
-    indexes = [np.where(el == sorted_keys)[0][0] for el in keys]
-    sorted_mat = np.array([np.copy(mat[i]) for i in indexes])
+    keys = np.array([x for x in mat[:,axis]])
+    sorted_keys = np.copy(keys)
+    sorted_keys = np.sort(sorted_keys)
+    indexes = [np.where(el == keys)[0][0] for el in sorted_keys]
+    sorted_mat = np.array([mat[i] for i in indexes])
     return sorted_mat[:,0], sorted_mat[:,1]
     
 
@@ -561,11 +562,11 @@ class MF_Sampler():
     
     def update_suffstats(self, state):
         for cluster_id, N in Counter(state['assignment']).items():
-
             points_in_cluster = [x for x, cid in zip(state['data_'], state['assignment']) if cid == cluster_id]
             mean = np.array(points_in_cluster).mean()
             var  = np.array(points_in_cluster).var()
             M    = len(points_in_cluster)
+            # print(var, points_in_cluster)
             state['suffstats'][cluster_id] = self.SuffStat(mean, var, M)
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
@@ -585,6 +586,9 @@ class MF_Sampler():
         b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
         a_n  = state['hyperparameters_']["a"] + N/2.
         # Update t-parameters
+        #if b_n*(1+V_n)/a_n < 0:
+            # print(x, mean, sigma, N)
+            # print(self.mass_samples)
         t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
@@ -602,6 +606,7 @@ class MF_Sampler():
             return(self.SuffStat(0,0,0))
         mean = (ss.mean*(ss.N)-x)/(ss.N-1)
         var  = (ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1) - mean**2
+        # print((ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1), mean**2, var, ss.N-1, mean, np.sqrt(ss.var), x)
         return self.SuffStat(mean, var, ss.N-1)
     
     def cluster_assignment_distribution(self, data_id, state):
@@ -664,6 +669,7 @@ class MF_Sampler():
         """
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
+            # print(cid)
             state['suffstats'][cid] = self.remove_datapoint_from_suffstats(datapoint, state['suffstats'][cid])
             self.prune_clusters(state)
             cid = self.sample_assignment(data_id, state)
@@ -786,12 +792,14 @@ class MF_Sampler():
         for i in range(self.burnin):
             print('\rBURN-IN MF: {0}/{1}'.format(i+1, self.burnin), end = '')
             self.update_mass_posteriors()
+            self.update_suffstats(state)
             self.gibbs_step(state)
         print('\n', end = '')
         for i in range(self.n_draws):
             print('\rSAMPLING MF: {0}/{1}'.format(i+1, self.n_draws), end = '')
             for _ in range(self.step):
                 self.update_mass_posteriors()
+                self.update_suffstats(state)
                 self.gibbs_step(state)
             self.sample_mixture_parameters(state)
         print('\n', end = '')
