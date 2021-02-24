@@ -51,6 +51,7 @@ class CGSampler:
     def __init__(self, events,
                        samp_settings, # burnin, draws, step (list)
                        samp_settings_ev = None,
+                       mass_chain_settings = [100,10], # burnin masses, step masses
                        alpha0 = 1,
                        gamma0 = 1,
                        hyperpars_ev = None,
@@ -72,6 +73,7 @@ class CGSampler:
             self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings_ev
         else:
             self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings
+        self.burnin_masses, self.step_masses = mass_chain_settings
         self.m_min   = m_min
         self.m_max   = m_max
         # DP
@@ -93,9 +95,10 @@ class CGSampler:
         self.n_parallel_threads = n_parallel_threads
         self.injected_density = injected_density
     
-    def initialise_samplers(self):
-        for i, ev in enumerate(self.events):
-            self.event_samplers.append(Sampler_SE.remote(
+    def initialise_samplers(self, marker):
+        event_samplers = []
+        for i, ev in enumerate(self.events[marker:marker+self.n_parallel_threads]):
+            event_samplers.append(Sampler_SE.remote(
                                             ev,
                                             i+1,
                                             self.burnin_ev,
@@ -111,17 +114,14 @@ class CGSampler:
                                             False,
                                             self.icn
                                             ))
-        return
+        return event_samplers
         
     def run_event_sampling(self):
-        self.initialise_samplers()
-        all_tasks = [s for s in self.event_samplers]
-        # slicing tasks (is there a better way to fix the number of parallel-working actors?)
-        tasks = [all_tasks[x:x+self.n_parallel_threads] for x in range(0, len(all_tasks), self.n_parallel_threads)]
         i = 0
-        for t in tasks:
-            pool = ActorPool(t)
-            for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(t))):
+        for n in range(int(len(self.events)/self.n_parallel_threads)+1):
+            tasks = self.initialise_samplers(n*self.n_parallel_threads)
+            pool = ActorPool(tasks)
+            for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
                 i += 1
                 print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)))
         return
@@ -175,7 +175,9 @@ class CGSampler:
                        verbose = self.verbose,
                        output_folder = self.mf_folder,
                        initial_cluster_number = self.icn,
-                       injected_density = self.injected_density
+                       injected_density = self.injected_density,
+                       burnin_masses = self.burnin_masses,
+                       step_masses = self.step_masses
                        )
         
         sampler.run()
@@ -511,13 +513,17 @@ class MF_Sampler():
                        output_folder = './',
                        verbose = True,
                        initial_cluster_number = 5.,
-                       injected_density = None
+                       injected_density = None,
+                       burnin_masses = 0,
+                       step_masses = 1
                        ):
                        
         self.mass_samples  = mass_samples
         self.burnin  = burnin
         self.n_draws = n_draws
         self.step    = step
+        self.burnin_masses = burnin_masses
+        self.step_masses = step_masses
         self.m_min   = m_min
         self.m_max   = m_max
         self.log_mass_posteriors = log_mass_posteriors
@@ -772,8 +778,9 @@ class MF_Sampler():
 
     def update_mass_posteriors(self):
         # Parallelizzabile
-        for index in range(len(self.log_mass_posteriors)):
-            self.update_single_posterior(index)
+        for _ in range(self.step_masses):
+            for index in range(len(self.log_mass_posteriors)):
+                self.update_single_posterior(index)
     
     def update_single_posterior(self, e_index):
         M_old = self.mass_samples[e_index]
@@ -789,6 +796,11 @@ class MF_Sampler():
     
     def run_sampling(self):
         state = self.initial_state(self.mass_samples)
+        for i in range(self.burnin_masses):
+            print('\rTERMALIZING MASS SAMPLES: {0}/{1}'.format(i+1, self.burnin_masses), end = '')
+            self.update_mass_posteriors()
+        self.update_suffstats(state)
+        print('\n', end = '')
         for i in range(self.burnin):
             print('\rBURN-IN MF: {0}/{1}'.format(i+1, self.burnin), end = '')
             self.update_mass_posteriors()
