@@ -22,7 +22,7 @@ def main():
     parser.add_option("--gamma", type = "float", dest = "gamma0", help = "External (MF) concentration parameter", default = 1.)
     parser.add_option("--deltaM", type = "float", dest = "deltaM", help = "Interval width for mass updating in Markov chain", default = 4.)
     parser.add_option("-e", "--processed_events", dest = "process_events", action = 'store_false', default = True, help = "Disables event processing")
-    parser.add_option("--icn", dest = "initial_cluster_number", type = "float", help = "Initial cluster number", default = 10.)
+    parser.add_option("--icn", dest = "initial_cluster_number", type = "float", help = "Initial cluster number", default = 5.)
     parser.add_option("--nthreads", dest = "n_parallel_threads", type = "int", help = "Number of parallel threads to spawn", default = 8)
     parser.add_option("-v", "--verbose", dest = "verbose", action = 'store_true', default = False, help = "Display output")
     
