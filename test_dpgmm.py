@@ -2,10 +2,10 @@ import numpy as np
 import os
 import collapsed_gibbs as DPGMM
 
-events_path = '/home/srinaldi/srinaldi-work1/O3a/Events_source_frame/'
+events_path = '/Users/stefanorinaldi/Documents/mass_inference/O3a/Events_source_frame/'
 event_files = [f for f in os.listdir(events_path) if not f.startswith('.')]
 events      = []
-output      = '/home/srinaldi/srinaldi-work1/O3a/'
+output      = '/Users/stefanorinaldi/Documents/mass_inference/O3a/'
 
 for event in event_files:
     events.append(np.genfromtxt(events_path+event))
@@ -40,13 +40,15 @@ sampler = DPGMM.CGSampler(events = events,
                         m_max = 200,
                         samp_settings = [1000,20,100],
                         samp_settings_ev = [100,10,100],
+                        hyperpars_ev = [1,3,1/4.],
+                        hyperpars = [1,3,1/4.],
                         alpha0  = 1,
-                        gamma0   = 1,
+                        gamma0   = 2,
                         delta_M = 7,
                         output_folder = output,
-                        process_events = False,
-                        initial_cluster_number = 5.,
-                        n_parallel_threads = 60
+                        process_events = True,
+                        initial_cluster_number = 20.,
+                        n_parallel_threads = 8
                         #injected_density = lambda x : normal_density(x, *pars)
                         # injected_density = lambda x : mass_function(x, *pars_mf)
                         )
