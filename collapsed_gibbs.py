@@ -469,7 +469,7 @@ class Sampler_SE:
         Runs sampler, saves samples and produces output plots.
         """
         
-        self.run_sampling()
+        
         # reconstructed events
         self.output_events = self.output_folder + '/reconstructed_events/'
         if not os.path.exists(self.output_events):
@@ -485,7 +485,8 @@ class Sampler_SE:
         self.output_pltevents = self.output_events + '/events/'
         if not os.path.exists(self.output_events + '/components/'):
             os.mkdir(self.output_events + '/components/')
-        self.output_components = self.output_events + '/componnts/'
+        self.output_components = self.output_events + '/components/'
+        self.run_sampling()
         self.plot_samples()
         
             
