@@ -73,8 +73,8 @@ class CGSampler:
         else:
             self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings
         self.burnin_masses, self.step_masses = mass_chain_settings
-        self.m_min   = m_min
-        self.m_max   = m_max
+        self.m_min   = min([m_min, min(np.array(self.events).flatten())])
+        self.m_max   = max([m_max, max(np.array(self.events).flatten())])
         # DP
         self.alpha0 = alpha0
         self.gamma0 = gamma0
@@ -169,7 +169,7 @@ class CGSampler:
                        m_max = self.m_max,
                        verbose = self.verbose,
                        output_folder = self.mf_folder,
-                       initial_cluster_number = self.icn,
+                       initial_cluster_number = min([self.icn, len(self.mt)]),
                        injected_density = self.injected_density,
                        burnin_masses = self.burnin_masses,
                        step_masses = self.step_masses
