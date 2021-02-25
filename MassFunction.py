@@ -4,11 +4,18 @@ import collapsed_gibbs as DPGMM
 import optparse as op
 import configparser
 import sys
+import importlib.util
+
 
 def is_opt_provided (parser, dest):
-   if any(opt.dest == dest and (opt._long_opts[0] in sys.argv[1:] or opt._short_opts[0] in sys.argv[1:]) for opt in parser._get_all_options()):
-      return True
-   return False
+    for opt in parser._get_all_options():
+        try:
+            if opt.dest == dest and (opt._long_opts[0] in sys.argv[1:] or opt._short_opts[0] in sys.argv[1:]):
+                return True
+        except:
+            if opt.dest == dest and opt._long_opts[0] in sys.argv[1:]:
+                return True
+    return False
 
 def main():
     parser = op.OptionParser()
@@ -48,21 +55,19 @@ def main():
         options.samp_settings_ev = [int(x) for x in options.samp_settings_ev.split(',')]
     options.mc_settings = [int(x) for x in options.mc_settings.split(',')]
     
-    event_files = [options.event_path+f for f in os.listdir(options.events_path) if not f.startswith('.')]
+    event_files = [options.events_path+f for f in os.listdir(options.events_path) if not f.startswith('.')]
     events      = []
-
+    
     for event in event_files:
         events.append(np.genfromtxt(event))
     
     inj_density = None
     if options.inj_density_file is not None:
-        cwd = os.getcwd()
-        inj_file_path = '/'.join(options.inj_density_file.split('/')[0:-1])
         inj_file_name = options.inj_density_file.split('/')[-1].split('.')[0]
-        os.chdir(inj_file_path)
-        from inj_file_name import injected_density
-        inj_density = injected_density
-        os.chdir(cwd)
+        spec = importlib.util.spec_from_file_location(inj_file_name, options.inj_density_file)
+        inj_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(inj_module)
+        inj_density = inj_module.injected_density
     
     sampler = DPGMM.CGSampler(events = events,
                               samp_settings = options.samp_settings,
