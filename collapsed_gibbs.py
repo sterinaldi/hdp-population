@@ -734,7 +734,8 @@ class MF_Sampler():
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
         ax.plot(app, p[50], marker = '', color = 'r')
         if self.injected_density is not None:
-            ax.plot(app, self.injected_density(app), color = 'k', marker = '')
+            norm = np.sum([self.injected_density(a)*(app[1]-app[0]) for a in app])
+            ax.plot(app, self.injected_density(app)/norm, color = 'm', marker = '', linewidth = 0.5)
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
@@ -773,10 +774,7 @@ class MF_Sampler():
         if not os.path.exists(self.output_events + '/diagnostic_mass_sampling/'):
             os.mkdir(self.output_events + '/diagnostic_mass_sampling/')
         for i, masses in enumerate(self.check_masses):
-            try:
-                app = np.linspace(min(masses), max(masses), 1000)
-            except:
-                print(masses, i)
+            app = np.linspace(min(masses), max(masses), 1000)
             p = np.array([np.exp(self.log_mass_posteriors[i](a)) for a in app])
             ax.hist(masses, bins = int(np.sqrt(len(masses))), density = True)
             ax.plot(app, p, color = 'r', marker = '')
