@@ -6,7 +6,7 @@ import configparser
 import sys
 
 def is_opt_provided (parser, dest):
-   if any (opt.dest == dest and (opt._long_opts[0] in sys.argv[1:] or opt._short_opts[0] in sys.argv[1:]) for opt in parser._get_all_options()):
+   if any(opt.dest == dest and (opt._long_opts[0] in sys.argv[1:] or opt._short_opts[0] in sys.argv[1:]) for opt in parser._get_all_options()):
       return True
    return False
 
