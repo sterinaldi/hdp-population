@@ -74,6 +74,8 @@ class CGSampler:
             self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings
         self.burnin_masses, self.step_masses = mass_chain_settings
         self.m_min   = min([m_min, min(np.array(self.events).flatten())])
+        if self.m_min < 0.:
+            self.m_min = 0.
         self.m_max   = max([m_max, max(np.array(self.events).flatten())])
         # DP
         self.alpha0 = alpha0
@@ -735,7 +737,8 @@ class MF_Sampler():
         ax.plot(app, p[50], marker = '', color = 'r')
         if self.injected_density is not None:
             norm = np.sum([self.injected_density(a)*(app[1]-app[0]) for a in app])
-            ax.plot(app, self.injected_density(app)/norm, color = 'm', marker = '', linewidth = 0.5)
+            density = np.array([self.injected_density(a)/norm for a in app])
+            ax.plot(app, density, color = 'm', marker = '', linewidth = 0.5)
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
