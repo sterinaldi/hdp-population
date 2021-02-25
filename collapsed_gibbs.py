@@ -51,7 +51,7 @@ class CGSampler:
     def __init__(self, events,
                        samp_settings, # burnin, draws, step (list)
                        samp_settings_ev = None,
-                       mass_chain_settings = [100,1], # burnin masses, step masses
+                       mass_chain_settings = [100,10], # burnin masses, step masses
                        alpha0 = 1,
                        gamma0 = 1,
                        hyperpars_ev = [1,3,1/4.],
