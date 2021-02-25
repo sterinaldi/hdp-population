@@ -51,7 +51,7 @@ class CGSampler:
     def __init__(self, events,
                        samp_settings, # burnin, draws, step (list)
                        samp_settings_ev = None,
-                       mass_chain_settings = [100,10], # burnin masses, step masses
+                       mass_chain_settings = [100,1], # burnin masses, step masses
                        alpha0 = 1,
                        gamma0 = 1,
                        hyperpars_ev = [1,3,1/4.],
@@ -761,7 +761,7 @@ class MF_Sampler():
         
         self.run_sampling()
         # reconstructed events
-        self.output_events = self.output_folder + '/reconstructed_events/'
+        self.output_events = self.output_folder
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
         self.plot_samples()
