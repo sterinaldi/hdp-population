@@ -3,6 +3,12 @@ import os
 import collapsed_gibbs as DPGMM
 import optparse as op
 import configparser
+import sys
+
+def is_opt_provided (parser, dest):
+   if any (opt.dest == dest and (opt._long_opts[0] in sys.argv[1:] or opt._short_opts[0] in sys.argv[1:]) for opt in parser._get_all_options()):
+      return True
+   return False
 
 def main():
     parser = op.OptionParser()
@@ -32,7 +38,7 @@ def main():
         config.read(options.optfile)
         opts = config['DEFAULT']
         for key, val in zip(vars(options).keys(), vars(options).values()):
-            if val == None:
+            if not is_opt_provided (parser, key):
                 vars(options)[key] = opts[key]
     options.hyperpars = [float(x) for x in options.hyperpars.split(',')]
     if options.hyperpars_ev is not None:
