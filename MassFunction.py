@@ -56,8 +56,13 @@ def main():
     
     inj_density = None
     if options.inj_density_file is not None:
-        from inj_density_file import injected_density
+        cwd = os.getcwd()
+        inj_file_path = '/'.join(options.inj_density_file.split('/')[0:-1])
+        inj_file_name = options.inj_density_file.split('/')[-1].split('.')[0]
+        os.chdir(inj_file_path)
+        from inj_file_name import injected_density
         inj_density = injected_density
+        os.chdir(cwd)
     
     sampler = DPGMM.CGSampler(events = events,
                               samp_settings = options.samp_settings,
