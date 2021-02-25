@@ -54,8 +54,8 @@ class CGSampler:
                        mass_chain_settings = [100,10], # burnin masses, step masses
                        alpha0 = 1,
                        gamma0 = 1,
-                       hyperpars_ev = None,
-                       hyperpars = [1,3,1/4.], # a, b, V
+                       hyperpars_ev = [1,3,1/4.],
+                       hyperpars = [1,10,1/4.], # a, b, V
                        m_min = 5,
                        m_max = 70,
                        verbose = True,
