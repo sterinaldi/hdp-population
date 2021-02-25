@@ -133,7 +133,7 @@ class CGSampler:
         prob_files.sort(key = natural_keys)
         for prob in prob_files:
             rec_prob = np.genfromtxt(prob)
-            self.log_mass_posteriors.append(interp1d(rec_prob[:,0], rec_prob[:,1], bounds_error = False, fill_value = 0.))
+            self.log_mass_posteriors.append(interp1d(rec_prob[:,0], rec_prob[:,1], bounds_error = False, fill_value = -np.inf))
     
     def display_config(self):
         print('Collapsed Gibbs sampler')
@@ -146,14 +146,11 @@ class CGSampler:
         return
     
     def initialise_mt_samples(self):
-        self.mt = np.mean(self.events, axis = 1)
+        self.mt = [np.random.choice(a) for a in self.events]
     
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
-        sorted = sort_matrix(a = [self.mt, self.log_mass_posteriors], axis = 0)
-        self.mt = sorted[0]
-        self.log_mass_posteriors = sorted[1]
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
@@ -165,8 +162,6 @@ class CGSampler:
                        self.step_mf,
                        delta_M = self.delta_M,
                        alpha0 = self.gamma0,
-                       #eventualmente differenziare iperparametri interni ed esterni
-                       #ora è così solo per finalità di test
                        b = self.b_mf,
                        a = self.a_mf,
                        V = self.V_mf,
@@ -765,13 +760,33 @@ class MF_Sampler():
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
         self.plot_samples()
-            
+        self.plot_diagnostic_mass_samples()
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
         fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
         return
 
+    def plot_diagnostic_mass_samples(self):
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        if not os.path.exists(self.output_events + '/diagnostic_mass_sampling/'):
+            os.mkdir(self.output_events + '/diagnostic_mass_sampling/')
+        for i, masses in enumerate(self.check_masses):
+            try:
+                app = np.linspace(min(masses), max(masses), 1000)
+            except:
+                print(masses, i)
+            p = np.array([np.exp(self.log_mass_posteriors[i](a)) for a in app])
+            ax.hist(masses, bins = int(np.sqrt(len(masses))), density = True)
+            ax.plot(app, p, color = 'r', marker = '')
+            fig.suptitle('Event {0}'.format(i+1))
+            ax.set_xlabel('$M\ [M_\\odot]$')
+            ax.set_ylabel('$p(M)$')
+            plt.savefig(self.output_events + '/diagnostic_mass_sampling/event_{0}.pdf'.format(i+1), bbox_inches = 'tight')
+            ax.clear()
+        return
+        
 
     def update_mass_posteriors(self, state):
         # Parallelizzabile
@@ -790,6 +805,7 @@ class MF_Sampler():
         
         if p_new - p_old > np.log(random.uniform()):
             self.mass_samples[e_index] = M_new
+        self.check_masses[e_index].append(self.mass_samples[e_index])
         return
     
     def run_sampling(self):
