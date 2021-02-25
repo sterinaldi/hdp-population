@@ -38,7 +38,7 @@ def main():
         config.read(options.optfile)
         opts = config['DEFAULT']
         for key, val in zip(vars(options).keys(), vars(options).values()):
-            if not is_opt_provided (parser, key):
+            if not is_opt_provided(parser, key):
                 vars(options)[key] = opts[key]
     options.hyperpars = [float(x) for x in options.hyperpars.split(',')]
     if options.hyperpars_ev is not None:
