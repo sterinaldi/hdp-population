@@ -157,7 +157,9 @@ class CGSampler:
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
-        # self.mt, self.log_mass_posteriors = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
+        self.mt, self.log_mass_posteriors = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
+        for m, logp in zip(self.mt, self.log_mass_posteriors):
+            print(logp(m))
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
@@ -616,7 +618,6 @@ class MF_Sampler():
             return(self.SuffStat(0,0,0))
         mean = (ss.mean*(ss.N)-x)/(ss.N-1)
         var  = (ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1) - mean**2
-        # print((ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1), mean**2, var, ss.N-1, mean, np.sqrt(ss.var), x)
         return self.SuffStat(mean, var, ss.N-1)
     
     def cluster_assignment_distribution(self, data_id, state):
