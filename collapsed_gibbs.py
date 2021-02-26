@@ -85,9 +85,9 @@ class CGSampler:
         # student-t
         self.nu_mf, self.s_mf, self.k_mf = hyperpars
         if hyperpars_ev is not None:
-            self.a_ev, self.b_ev, self.V_ev = hyperpars_ev
+            self.nu_ev, self.s_ev, self.k_ev = hyperpars_ev
         else:
-            self.a_ev, self.b_ev, self.V_ev = hyperpars
+            self.nu_ev, self.s_ev, self.k_ev = hyperpars
         # miscellanea
         self.output_folder = output_folder
         self.icn = initial_cluster_number
@@ -111,9 +111,9 @@ class CGSampler:
                                             self.n_draws_ev,
                                             self.step_ev,
                                             self.alpha0,
-                                            self.b_ev,
-                                            self.a_ev,
-                                            self.V_ev,
+                                            k  = self.k_ev,
+                                            nu = self.nu_ev,
+                                            s  = self.s_ev,
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
@@ -157,9 +157,7 @@ class CGSampler:
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
-        sorted = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
-        self.mt = sorted[0]
-        self.log_mass_posteriors = sorted[1]
+        self.mt, self.log_mass_posteriors = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
@@ -217,9 +215,9 @@ class Sampler_SE:
                        n_draws,
                        step,
                        alpha0 = 1,
-                       b = 5,
-                       a = 3,
-                       V = 1/4.,
+                       k = 5,
+                       nu = 3,
+                       s = 1/4.,
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
@@ -237,9 +235,9 @@ class Sampler_SE:
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = (b**2)*len(mass_samples)/initial_cluster_number
-        self.a  = len(mass_samples)/(initial_cluster_number/2.)
-        self.V  = V
+        self.s  = (s**2) #*len(mass_samples)/initial_cluster_number
+        self.k  = k
+        self.nu = nu
         self.mu = np.mean(mass_samples)
         # Miscellanea
         self.icn    = initial_cluster_number
@@ -259,9 +257,9 @@ class Sampler_SE:
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'hyperparameters_': {
-                "b": self.b,
-                "a": self.a,
-                "V": self.V,
+                "k": self.k,
+                "nu": self.nu,
+                "s": self.s,
                 "mu": self.mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
@@ -292,15 +290,15 @@ class Sampler_SE:
         sigma = ss.var
         N     = ss.N
         # Update hyperparameters
-        V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-        mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-        b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
-        a_n  = state['hyperparameters_']["a"] + N/2.
+        k_n  = state['hyperparameters_']["k"] + N
+        mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
+        nu_n = state['hyperparameters_']["nu"] + N
+        s_n  = (state['hyperparameters_']["nu"]*state['hyperparameters_']["s"] + N*sigma + (N*state['hyperparameters_']["k"]*(state['hyperparameters_']["mu"] - mean)**2)/k_n)/nu_n
         # Update t-parameters
-        t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
+        t_sigma = np.sqrt(s_n*(1+k_n)/k_n)
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
-        logL = my_student_t(df = 2*a_n, t = t_x)
+        logL = my_student_t(df = 2*nu_n, t = t_x)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
@@ -392,14 +390,14 @@ class Sampler_SE:
             mean = ss[cid].mean
             sigma = ss[cid].var
             N     = ss[cid].N
-            V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-            mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-            b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
-            a_n  = state['hyperparameters_']["a"] + N/2.
+            k_n  = state['hyperparameters_']["k"] + N
+            mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
+            nu_n = state['hyperparameters_']["nu"] + N
+            s_n  = (state['hyperparameters_']["nu"]*state['hyperparameters_']["s"] + N*sigma + (N*state['hyperparameters_']["k"]*(state['hyperparameters_']["mu"] - mean)**2)/k_n)/nu_n
             # Update t-parameters
-            s = stats.invgamma(a_n, scale = b_n).rvs()
-            m = stats.norm(mu_n, s*V_n).rvs()
-            components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
+            # https://stats.stackexchange.com/questions/209880/sample-from-a-normal-inverse-chi-squared-distribution
+            s = nu_n*s_n/(stats.chi2(df = nu_n).rvs())
+            m = (student_t(df = nu_n).rvs()*np.sqrt(s_n/k_n)) + mu_n
         self.mixture_samples.append(components)
     
     def run_sampling(self):
