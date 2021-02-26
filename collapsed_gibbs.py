@@ -582,7 +582,6 @@ class MF_Sampler():
             mean = np.array(points_in_cluster).mean()
             var  = np.array(points_in_cluster).var()
             M    = len(points_in_cluster)
-            # print(var, points_in_cluster)
             state['suffstats'][cluster_id] = self.SuffStat(mean, var, M)
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
@@ -597,7 +596,7 @@ class MF_Sampler():
         sigma = ss.var
         N     = ss.N
         # Update hyperparameters
-        k_n  = k_0 + N
+        k_n  = state['hyperparameters_']["k"] + N
         mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
         nu_n = state['hyperparameters_']["nu"] + N
         s_n  = (state['hyperparameters_']["nu"]*state['hyperparameters_']["s"] + N*sigma + (N*state['hyperparameters_']["k"]*(state['hyperparameters_']["mu"] - mean)**2)/k_n)/nu_n
