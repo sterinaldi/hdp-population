@@ -766,7 +766,7 @@ class MF_Sampler():
             plt.tight_layout()
             fig.savefig(self.output_events +'/components_mf.pdf', bbox_inches = 'tight')
     
-    def ppplot(self, p, a)
+    def ppplot(self, p, a):
         x  = np.linspace(self.m_min, self.m_max, 100)
         dx = x[1]-x[0]
         f50 = interp1d(a, p[50], bounds_error = False, fill_value = 0)
