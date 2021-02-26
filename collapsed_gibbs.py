@@ -814,10 +814,10 @@ class MF_Sampler():
         self.plot_samples()
         if self.diagnostic:
             self.plot_diagnostic_mass_samples()
-            fig = plt.figure()
-            ax = fig.add_subplot(111)
-            ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-            fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
+        fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
         return
 
     def plot_diagnostic_mass_samples(self):
