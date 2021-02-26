@@ -46,11 +46,11 @@ def main():
         config = configparser.ConfigParser()
         config.read(options.optfile)
         opts = config['DEFAULT']
-        if opts['true_masses'] == 'None':
-            opts['true_masses'] = None
         for key, val in zip(vars(options).keys(), vars(options).values()):
             if not is_opt_provided(parser, key):
                 vars(options)[key] = opts[key]
+        if options.true_masses is 'None'
+            options.true_masses = None
     options.hyperpars = [float(x) for x in options.hyperpars.split(',')]
     if options.hyperpars_ev is not None:
         options.hyperpars_ev = [float(x) for x in options.hyperpars_ev.split(',')]
