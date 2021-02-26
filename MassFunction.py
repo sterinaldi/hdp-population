@@ -25,7 +25,7 @@ def main():
     parser.add_option("--mmin", type = "float", dest = "mmin", help = "Minimum BH mass [Msun]", default = 3.)
     parser.add_option("--mmax", type = "float", dest = "mmax", help = "Maximum BH mass [Msun]", default = 200.)
     parser.add_option("--inj_density", type = "string", dest = "inj_density_file", help = "Python module with injected density")
-    parser.add_option("--true_masses", type = "strint", dest = "true_masses", help = "Simulated true masses")
+    parser.add_option("--true_masses", type = "string", dest = "true_masses", help = "Simulated true masses")
     parser.add_option("--optfile", type = "string", dest = "optfile", help = "Options file. Passing command line options overrides optfile. It must contains ALL options")
     parser.add_option("--samp_settings", type = "string", dest = "samp_settings", help = "Burnin, samples and step for MF sampling", default = '1000,100,10')
     parser.add_option("--samp_settings_ev", type = "string", dest = "samp_settings_ev", help = "Burnin, samples and step for single event sampling. If None, uses MF settings")
