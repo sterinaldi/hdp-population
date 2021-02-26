@@ -63,7 +63,9 @@ class CGSampler:
                        initial_cluster_number = 5.,
                        process_events = True,
                        n_parallel_threads = 8,
-                       injected_density = None
+                       injected_density = None,
+                       true_masses = None,
+                       diagnostic = False
                        ):
         
         self.events = events
@@ -95,6 +97,7 @@ class CGSampler:
         self.process_events = process_events
         self.n_parallel_threads = n_parallel_threads
         self.injected_density = injected_density
+        self.true_masses = true_masses
         self.output_recprob = self.output_folder + '/reconstructed_events/rec_prob/'
     
     def initialise_samplers(self, marker):
@@ -173,8 +176,10 @@ class CGSampler:
                        output_folder = self.mf_folder,
                        initial_cluster_number = min([self.icn, len(self.mt)]),
                        injected_density = self.injected_density,
+                       true_masses = self.true_masses,
                        burnin_masses = self.burnin_masses,
-                       step_masses = self.step_masses
+                       step_masses = self.step_masses,
+                       diagnostic = self.diagnostic
                        )
         
         sampler.run()
@@ -511,8 +516,10 @@ class MF_Sampler():
                        verbose = True,
                        initial_cluster_number = 5.,
                        injected_density = None,
+                       true_masses = None,
                        burnin_masses = 0,
-                       step_masses = 1
+                       step_masses = 1,
+                       diagnostic = False
                        ):
                        
         self.mass_samples  = mass_samples
@@ -542,6 +549,8 @@ class MF_Sampler():
         self.n_clusters = []
         self.verbose = verbose
         self.injected_density = injected_density
+        self.true_masses = true_masses
+        self.diagnostic = diagnostic
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
@@ -723,7 +732,8 @@ class MF_Sampler():
         fig = plt.figure()
         fig.suptitle('Mass function')
         ax  = fig.add_subplot(111)
-        ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
+        if self.true_masses is not None:
+            ax.hist(self.true_masses, bins = int(np.sqrt(len(self.true_masses))), histtype = 'step', density = True)
         prob = []
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
@@ -742,16 +752,17 @@ class MF_Sampler():
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
-        fig = plt.figure()
-        for i, s in enumerate(self.mixture_samples[:25]):
-            ax = fig.add_subplot(5,int(len(self.mixture_samples[:25])/5),i+1)
-            app = np.linspace(min(self.mass_samples),max(self.mass_samples),1000)
-            for c in s.values():
-                p = np.exp(log_normal_density(app,c['mean'], c['sigma']))*c['weight']
-                ax.plot(app,p, linewidth = 0.4)
-                ax.set_xlabel('$M_1\ [M_\\odot]$')
-        plt.tight_layout()
-        fig.savefig(self.output_events +'/components_mf.pdf', bbox_inches = 'tight')
+        if self.diagnostic:
+            fig = plt.figure()
+            for i, s in enumerate(self.mixture_samples[:25]):
+                ax = fig.add_subplot(5,int(len(self.mixture_samples[:25])/5),i+1)
+                app = np.linspace(min(self.mass_samples),max(self.mass_samples),1000)
+                for c in s.values():
+                    p = np.exp(log_normal_density(app,c['mean'], c['sigma']))*c['weight']
+                    ax.plot(app,p, linewidth = 0.4)
+                    ax.set_xlabel('$M_1\ [M_\\odot]$')
+            plt.tight_layout()
+            fig.savefig(self.output_events +'/components_mf.pdf', bbox_inches = 'tight')
         
     def run(self):
         """
@@ -764,11 +775,12 @@ class MF_Sampler():
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
         self.plot_samples()
-        self.plot_diagnostic_mass_samples()
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
+        if self.diagnostic:
+            self.plot_diagnostic_mass_samples()
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
+            fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
         return
 
     def plot_diagnostic_mass_samples(self):
