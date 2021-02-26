@@ -599,7 +599,7 @@ class MF_Sampler():
         k_n  = state['hyperparameters_']["k"] + N
         mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
         nu_n = state['hyperparameters_']["nu"] + N
-        s_n  = (state['hyperparameters_']["nu"]*state['hyperparameters_']["s"] + N*sigma + (N*state['hyperparameters_']["k"]*(state['hyperparameters_']["mu"] - mean)**2)/k_n)/nu_n
+        s_n  = (state['hyperparameters_']["nu"]*state['hyperparameters_']["s"] + N*sigma)/nu_n# + (N*state['hyperparameters_']["k"]*(state['hyperparameters_']["mu"] - mean)**2)/k_n)/nu_n
         # Update t-parameters
         t_sigma = np.sqrt(s_n*(1+k_n)/k_n)
         t_x     = (x - mu_n)/t_sigma
