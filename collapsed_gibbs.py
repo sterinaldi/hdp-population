@@ -95,6 +95,7 @@ class CGSampler:
         self.delta_M = np.std(events, axis = 1)
         self.verbose = verbose
         self.process_events = process_events
+        self.diagnostic = diagnostic
         self.n_parallel_threads = n_parallel_threads
         self.injected_density = injected_density
         self.true_masses = true_masses
@@ -129,6 +130,7 @@ class CGSampler:
             for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
                 i += 1
                 print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
+        print('\n')
         return
     
     def load_mixtures(self):
