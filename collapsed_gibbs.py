@@ -111,14 +111,14 @@ class CGSampler:
                                             self.n_draws_ev,
                                             self.step_ev,
                                             self.alpha0,
-                                            k  = self.k_ev,
-                                            nu = self.nu_ev,
-                                            s  = self.s_ev,
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
                                             False,
-                                            self.icn
+                                            self.icn,
+                                            k  = self.k_ev,
+                                            nu = self.nu_ev,
+                                            s  = self.s_ev
                                             ))
         return event_samplers
         
