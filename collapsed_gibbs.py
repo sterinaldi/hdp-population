@@ -536,8 +536,8 @@ class MF_Sampler():
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = (b**2)*len(mass_samples)/initial_cluster_number
-        self.a  = len(mass_samples)/(initial_cluster_number/2.)
+        self.a  = a #len(mass_samples)/(initial_cluster_number/2.)
+        self.b  = (b**2)*self.a#*len(mass_samples)/initial_cluster_number
         self.V  = V
         self.mu = np.mean(mass_samples)
         # Miscellanea
