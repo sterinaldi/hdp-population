@@ -511,9 +511,9 @@ class MF_Sampler():
                        step,
                        delta_M = 1,
                        alpha0 = 1,
-                       b = 5,
-                       a = 3,
-                       V = 1/4.,
+                       s = 5,
+                       nu = 3,
+                       k = 1/4.,
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
@@ -539,9 +539,9 @@ class MF_Sampler():
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.a  = a #len(mass_samples)/(initial_cluster_number/2.)
-        self.b  = (b**2)*self.a#*len(mass_samples)/initial_cluster_number
-        self.V  = V
+        self.nu = nu #len(mass_samples)/(initial_cluster_number/2.)
+        self.s  = s**2 #*len(mass_samples)/initial_cluster_number
+        self.k  = k
         self.mu = np.mean(mass_samples)
         # Miscellanea
         self.icn    = initial_cluster_number
@@ -564,9 +564,9 @@ class MF_Sampler():
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'hyperparameters_': {
-                "b": self.b,
-                "a": self.a,
-                "V": self.V,
+                "s": self.s,
+                "k": self.k,
+                "nu": self.nu,
                 "mu": self.mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
@@ -597,18 +597,15 @@ class MF_Sampler():
         sigma = ss.var
         N     = ss.N
         # Update hyperparameters
-        V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-        mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-        b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
-        a_n  = state['hyperparameters_']["a"] + N/2.
+        k_n  = k_0 + N
+        mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
+        nu_n = state['hyperparameters_']["nu"] + N
+        s_n  = (state['hyperparameters_']["nu"]*state['hyperparameters_']["s"] + N*sigma + (N*state['hyperparameters_']["k"]*(state['hyperparameters_']["mu"] - mean)**2)/k_n)/nu_n
         # Update t-parameters
-        #if b_n*(1+V_n)/a_n < 0:
-            # print(x, mean, sigma, N)
-            # print(self.mass_samples)
-        t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
+        t_sigma = np.sqrt(s_n*(1+k_n)/k_n)
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
-        logL = my_student_t(df = 2*a_n, t = t_x)
+        logL = my_student_t(df = 2*nu_n, t = t_x)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
@@ -702,13 +699,14 @@ class MF_Sampler():
             mean = ss[cid].mean
             sigma = ss[cid].var
             N     = ss[cid].N
-            V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-            mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-            b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
-            a_n  = state['hyperparameters_']["a"] + N/2.
+            k_n  = k_0 + N
+            mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
+            nu_n = state['hyperparameters_']["nu"] + N
+            s_n  = (state['hyperparameters_']["nu"]*state['hyperparameters_']["s"] + N*sigma + (N*state['hyperparameters_']["k"]*(state['hyperparameters_']["mu"] - mean)**2)/k_n)/nu_n
             # Update t-parameters
-            s = stats.invgamma(a_n, scale = b_n).rvs()
-            m = stats.norm(mu_n, s*V_n).rvs()
+            # https://stats.stackexchange.com/questions/209880/sample-from-a-normal-inverse-chi-squared-distribution
+            s = nu_n*s_n/(stats.chi2(df = nu_n).rvs())
+            m = stats.norm(mu_n, s/nu_n).rvs()
             components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
         self.mixture_samples.append(components)
     
