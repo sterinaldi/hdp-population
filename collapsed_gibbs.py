@@ -130,7 +130,6 @@ class CGSampler:
             for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
                 i += 1
                 print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
-        print('\n')
         return
     
     def load_mixtures(self):
@@ -755,9 +754,9 @@ class MF_Sampler():
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
+        if self.injected_density is not None:
+            self.ppplot(p, app)
         if self.diagnostic:
-            if self.injected_density is not None:
-                self.ppplot(p, app)
             fig = plt.figure()
             for i, s in enumerate(self.mixture_samples[:25]):
                 ax = fig.add_subplot(5,int(len(self.mixture_samples[:25])/5),i+1)
