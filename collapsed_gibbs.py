@@ -783,7 +783,7 @@ class MF_Sampler():
         cdf95 = []
         cdf16 = []
         cdf84 = []
-        norm = np.sum([self.injected_density(ai)*(app[1]-app[0]) for ai in a])
+        norm = np.sum([self.injected_density(ai)*(a[1]-a[0]) for ai in a])
         for i in range(len(x)):
             cdft.append(np.sum([self.injected_density(xi)*dx/norm for xi in x[:i+1]]))
             cdf50.append(np.sum([f50(xi)*dx for xi in x[:i+1]]))
