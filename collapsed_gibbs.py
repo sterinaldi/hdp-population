@@ -55,7 +55,7 @@ class CGSampler:
                        alpha0 = 1,
                        gamma0 = 1,
                        hyperpars_ev = [1,3,1/4.],
-                       hyperpars = [1,10,1/4.], # a, b, V
+                       hyperpars = [1,10,1/4.], # nu, s, k
                        m_min = 5,
                        m_max = 70,
                        verbose = True,
@@ -83,7 +83,7 @@ class CGSampler:
         self.alpha0 = alpha0
         self.gamma0 = gamma0
         # student-t
-        self.a_mf, self.b_mf, self.V_mf = hyperpars
+        self.nu_mf, self.s_mf, self.k_mf = hyperpars
         if hyperpars_ev is not None:
             self.a_ev, self.b_ev, self.V_ev = hyperpars_ev
         else:
@@ -171,9 +171,9 @@ class CGSampler:
                        self.step_mf,
                        delta_M = self.delta_M,
                        alpha0 = self.gamma0,
-                       b = self.b_mf,
-                       a = self.a_mf,
-                       V = self.V_mf,
+                       s = self.s_mf,
+                       nu = self.nu_mf,
+                       k = self.k_mf,
                        m_min = self.m_min,
                        m_max = self.m_max,
                        verbose = self.verbose,
@@ -706,7 +706,7 @@ class MF_Sampler():
             # Update t-parameters
             # https://stats.stackexchange.com/questions/209880/sample-from-a-normal-inverse-chi-squared-distribution
             s = nu_n*s_n/(stats.chi2(df = nu_n).rvs())
-            m = stats.norm(mu_n, s/nu_n).rvs()
+            m = stats.norm(mu_n, k_n*s/nu_n).rvs()
             components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
         self.mixture_samples.append(components)
     
