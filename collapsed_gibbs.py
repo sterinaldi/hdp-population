@@ -698,7 +698,7 @@ class MF_Sampler():
             mean = ss[cid].mean
             sigma = ss[cid].var
             N     = ss[cid].N
-            k_n  = k_0 + N
+            k_n  = state['hyperparameters_']["k"] + N
             mu_n = (state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n
             nu_n = state['hyperparameters_']["nu"] + N
             s_n  = (state['hyperparameters_']["nu"]*state['hyperparameters_']["s"] + N*sigma + (N*state['hyperparameters_']["k"]*(state['hyperparameters_']["mu"] - mean)**2)/k_n)/nu_n
