@@ -157,7 +157,7 @@ class CGSampler:
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
-        self.mt, self.log_mass_posteriors = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
+        # self.mt, self.log_mass_posteriors = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
