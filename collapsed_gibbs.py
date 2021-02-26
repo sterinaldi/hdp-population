@@ -735,7 +735,8 @@ class MF_Sampler():
         fig.suptitle('Mass function')
         ax  = fig.add_subplot(111)
         if self.true_masses is not None:
-            ax.hist(self.true_masses, bins = int(np.sqrt(len(self.true_masses))), histtype = 'step', density = True)
+            truths = np.genfromtxt(self.true_masses)
+            ax.hist(truths, bins = int(np.sqrt(len(truths))), histtype = 'step', density = True)
         prob = []
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
@@ -782,8 +783,9 @@ class MF_Sampler():
         cdf95 = []
         cdf16 = []
         cdf84 = []
+        norm = np.sum([self.injected_density(ai)*(app[1]-app[0]) for ai in a])
         for i in range(len(x)):
-            cdft.append(np.sum([self.injected_density(xi)*dx for xi in x[:i+1]]))
+            cdft.append(np.sum([self.injected_density(xi)*dx/norm for xi in x[:i+1]]))
             cdf50.append(np.sum([f50(xi)*dx for xi in x[:i+1]]))
             cdf5.append(np.sum([f5(xi)*dx for xi in x[:i+1]]))
             cdf95.append(np.sum([f95(xi)*dx for xi in x[:i+1]]))
@@ -794,6 +796,7 @@ class MF_Sampler():
         fig.suptitle('PP plot')
         ax.set_xlabel('Simulated f(M)')
         ax.set_ylabel('Reconstructed f(M)')
+        ax.plot(np.linspace(0,1, 100), np.linspace(0,1,100), marker = '', linewidth = 0.5, color = 'k')
         ax.plot(cdft, cdf50, ls = '--', marker = '', color = 'r')
         ax.fill_between(cdft, cdf95, cdf5, color = 'lightgreen', alpha = 0.5)
         ax.fill_between(cdft, cdf84, cdf16, color = 'aqua', alpha = 0.5)
