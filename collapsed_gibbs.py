@@ -753,6 +753,8 @@ class MF_Sampler():
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
         if self.diagnostic:
+            if self.injected_density is not None:
+                self.ppplot(p, app)
             fig = plt.figure()
             for i, s in enumerate(self.mixture_samples[:25]):
                 ax = fig.add_subplot(5,int(len(self.mixture_samples[:25])/5),i+1)
@@ -763,7 +765,38 @@ class MF_Sampler():
                     ax.set_xlabel('$M_1\ [M_\\odot]$')
             plt.tight_layout()
             fig.savefig(self.output_events +'/components_mf.pdf', bbox_inches = 'tight')
-        
+    
+    def ppplot(self, p, a)
+        x  = np.linspace(self.m_min, self.m_max, 100)
+        dx = x[1]-x[0]
+        f50 = interp1d(a, p[50], bounds_error = False, fill_value = 0)
+        f5 = interp1d(a, p[5], bounds_error = False, fill_value = 0)
+        f95 = interp1d(a, p[95], bounds_error = False, fill_value = 0)
+        f16 = interp1d(a, p[16], bounds_error = False, fill_value = 0)
+        f84 = interp1d(a, p[84], bounds_error = False, fill_value = 0)
+        cdft  = []
+        cdf50 = []
+        cdf5  = []
+        cdf95 = []
+        cdf16 = []
+        cdf84 = []
+        for i in range(len(x)):
+            cdft.append(np.sum([self.injected_density(xi)*dx for xi in x[:i+1]]))
+            cdf50.append(np.sum([f50(xi)*dx for xi in x[:i+1]]))
+            cdf5.append(np.sum([f5(xi)*dx for xi in x[:i+1]]))
+            cdf95.append(np.sum([f95(xi)*dx for xi in x[:i+1]]))
+            cdf16.append(np.sum([f16(xi)*dx for xi in x[:i+1]]))
+            cdf84.append(np.sum([f84(xi)*dx for xi in x[:i+1]]))
+        fig = plt.figure()
+        ax  = fig.add_subplot(111)
+        fig.suptitle('PP plot')
+        ax.set_xlabel('Simulated f(M)')
+        ax.set_ylabel('Reconstructed f(M)')
+        ax.plot(cdft, cdf50, ls = '--', marker = '', color = 'r')
+        ax.fill_between(cdft, cdf95, cdf5, color = 'lightgreen', alpha = 0.5)
+        ax.fill_between(cdft, cdf84, cdf16, color = 'aqua', alpha = 0.5)
+        plt.savefig(self.output_events+'PPplot.pdf', bbox_inches = 'tight')
+    
     def run(self):
         """
         Runs sampler, saves samples and produces output plots.
