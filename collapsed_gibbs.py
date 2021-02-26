@@ -705,7 +705,7 @@ class MF_Sampler():
             # Update t-parameters
             # https://stats.stackexchange.com/questions/209880/sample-from-a-normal-inverse-chi-squared-distribution
             s = nu_n*s_n/(stats.chi2(df = nu_n).rvs())
-            m = stats.norm(mu_n, k_n*s/nu_n).rvs()
+            m = (student_t(df = nu_n).rvs() - mu_n)/(np.sqrt(s_n/k_n))
             components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
         self.mixture_samples.append(components)
     
