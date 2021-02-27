@@ -234,8 +234,8 @@ class Sampler_SE:
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = (b**2)*len(mass_samples)/initial_cluster_number
-        self.a  = len(mass_samples)/(initial_cluster_number/2.)
+        self.b  = a*(b**2)#*len(mass_samples)/initial_cluster_number
+        self.a  = a #len(mass_samples)/(initial_cluster_number/2.)
         self.V  = V
         self.mu = np.mean(mass_samples)
         # Miscellanea
@@ -291,7 +291,8 @@ class Sampler_SE:
         # Update hyperparameters
         V_n  = 1/(1/state['hyperparameters_']["V"] + N)
         mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-        b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
+        b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
+        #b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
         a_n  = state['hyperparameters_']["a"] + N/2.
         # Update t-parameters
         t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
@@ -391,7 +392,8 @@ class Sampler_SE:
             N     = ss[cid].N
             V_n  = 1/(1/state['hyperparameters_']["V"] + N)
             mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-            b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
+            b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
+            #b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
             a_n  = state['hyperparameters_']["a"] + N/2.
             # Update t-parameters
             s = stats.invgamma(a_n, scale = b_n).rvs()
@@ -536,8 +538,8 @@ class MF_Sampler():
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = (b**2)*len(mass_samples)/initial_cluster_number
-        self.a  = len(mass_samples)/(initial_cluster_number/2.)
+        self.b  = a*(b**2)#*len(mass_samples)/initial_cluster_number
+        self.a  = a#len(mass_samples)/(initial_cluster_number/2.)
         self.V  = V
         self.mu = np.mean(mass_samples)
         # Miscellanea
@@ -596,12 +598,10 @@ class MF_Sampler():
         # Update hyperparameters
         V_n  = 1/(1/state['hyperparameters_']["V"] + N)
         mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-        b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
+        b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
+        #b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
         a_n  = state['hyperparameters_']["a"] + N/2.
         # Update t-parameters
-        #if b_n*(1+V_n)/a_n < 0:
-            # print(x, mean, sigma, N)
-            # print(self.mass_samples)
         t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
@@ -701,7 +701,8 @@ class MF_Sampler():
             N     = ss[cid].N
             V_n  = 1/(1/state['hyperparameters_']["V"] + N)
             mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-            b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
+            b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
+            #b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
             a_n  = state['hyperparameters_']["a"] + N/2.
             # Update t-parameters
             s = stats.invgamma(a_n, scale = b_n).rvs()
