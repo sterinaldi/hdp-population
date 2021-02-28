@@ -396,7 +396,7 @@ class Sampler_SE:
             cid = self.sample_assignment(data_id, state)
             state['assignment'][data_id] = cid
             state['suffstats'][cid] = self.add_datapoint_to_suffstats(state['data_'][data_id], state['suffstats'][cid])
-            #self.update_suffstats(state)
+            self.update_suffstats(state)
         self.n_clusters.append(len(state['cluster_ids_']))
     
     def sample_mixture_parameters(self, state):
