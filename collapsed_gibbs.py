@@ -65,7 +65,9 @@ class CGSampler:
                        n_parallel_threads = 8,
                        injected_density = None,
                        true_masses = None,
-                       diagnostic = False
+                       diagnostic = False,
+                       sigma_max  = 4,
+                       sigma_max_ev = None
                        ):
         
         self.events = events
@@ -88,6 +90,11 @@ class CGSampler:
             self.a_ev, self.b_ev, self.V_ev = hyperpars_ev
         else:
             self.a_ev, self.b_ev, self.V_ev = hyperpars
+        self.sigma_max = sigma_max
+        if sigma_max_ev is not None:
+            self.sigma_max_ev = sigma_max_ev
+        else:
+            self.sigma_max_ev = sigma_max
         # miscellanea
         self.output_folder = output_folder
         self.icn = initial_cluster_number
@@ -118,7 +125,8 @@ class CGSampler:
                                             self.m_max,
                                             self.output_folder,
                                             False,
-                                            self.icn
+                                            self.icn,
+                                            self.sigma_max_ev
                                             ))
         return event_samplers
         
@@ -157,6 +165,7 @@ class CGSampler:
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
+        self.mt, self.log_mass_posteriors = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
@@ -180,7 +189,8 @@ class CGSampler:
                        true_masses = self.true_masses,
                        burnin_masses = self.burnin_masses,
                        step_masses = self.step_masses,
-                       diagnostic = self.diagnostic
+                       diagnostic = self.diagnostic,
+                       sigma_max = self.sigma_max
                        )
         
         sampler.run()
@@ -199,7 +209,7 @@ class CGSampler:
         print('Elapsed time: {0}h {1}m {2}s'.format(h, m, s))
         return
         
-ray.init(ignore_reinit_error=True, log_to_driver=False)
+ray.init(ignore_reinit_error=True)#, log_to_driver=False)
 
 @jit(forceobj=True)
 def my_student_t(df, t):
@@ -221,7 +231,8 @@ class Sampler_SE:
                        m_max = 50,
                        output_folder = './',
                        verbose = True,
-                       initial_cluster_number = 5.
+                       initial_cluster_number = 5.,
+                       sigma_max = 5.
                        ):
         
         self.mass_samples  = mass_samples
@@ -231,11 +242,12 @@ class Sampler_SE:
         self.step    = step
         self.m_min   = m_min
         self.m_max   = m_max
+        self.sigma_max = sigma_max
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = a*(b**2)#*len(mass_samples)/initial_cluster_number
-        self.a  = a #len(mass_samples)/(initial_cluster_number/2.)
+        self.b  = a*(b**2)
+        self.a  = a
         self.V  = V
         self.mu = np.mean(mass_samples)
         # Miscellanea
@@ -250,11 +262,14 @@ class Sampler_SE:
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
+        interval = (max(samples)-min(samples))/(self.icn)
+        assign = [int((a-min(samples))/interval) for a in samples]
         state = {
             'cluster_ids_': cluster_ids,
-            'data_': np.sort(samples),
+            'data_': samples,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
+            'Ntot': len(samples),
             'hyperparameters_': {
                 "b": self.b,
                 "a": self.a,
@@ -262,15 +277,16 @@ class Sampler_SE:
                 "mu": self.mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
-            'assignment': [int((a - a%(len(samples)/self.icn))/(len(samples)/self.icn)) for a in range(len(samples))],
+            'assignment': assign,
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             }
         self.update_suffstats(state)
+        for c_id in state['cluster_ids_']:
+            print(c_id, state['suffstats'][c_id])
         return state
     
     def update_suffstats(self, state):
         for cluster_id, N in Counter(state['assignment']).items():
-
             points_in_cluster = [x for x, cid in zip(state['data_'], state['assignment']) if cid == cluster_id]
             mean = np.array(points_in_cluster).mean()
             var  = np.array(points_in_cluster).var()
@@ -287,15 +303,16 @@ class Sampler_SE:
         x = state['data_'][data_id]
         mean = ss.mean
         sigma = ss.var
+        print(np.sqrt(sigma))
         N     = ss.N
         # Update hyperparameters
         V_n  = 1/(1/state['hyperparameters_']["V"] + N)
         mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-        b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
-        #b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
+        b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
         a_n  = state['hyperparameters_']["a"] + N/2.
         # Update t-parameters
         t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
+        t_sigma = min([t_sigma, self.sigma_max])
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
         logL = my_student_t(df = 2*a_n, t = t_x)
@@ -379,6 +396,7 @@ class Sampler_SE:
             cid = self.sample_assignment(data_id, state)
             state['assignment'][data_id] = cid
             state['suffstats'][cid] = self.add_datapoint_to_suffstats(state['data_'][data_id], state['suffstats'][cid])
+            #self.update_suffstats(state)
         self.n_clusters.append(len(state['cluster_ids_']))
     
     def sample_mixture_parameters(self, state):
@@ -392,8 +410,7 @@ class Sampler_SE:
             N     = ss[cid].N
             V_n  = 1/(1/state['hyperparameters_']["V"] + N)
             mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-            b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
-            #b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
+            b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
             a_n  = state['hyperparameters_']["a"] + N/2.
             # Update t-parameters
             s = stats.invgamma(a_n, scale = b_n).rvs()
@@ -522,7 +539,8 @@ class MF_Sampler():
                        true_masses = None,
                        burnin_masses = 0,
                        step_masses = 1,
-                       diagnostic = False
+                       diagnostic = False,
+                       sigma_max = 5
                        ):
                        
         self.mass_samples  = mass_samples
@@ -533,13 +551,14 @@ class MF_Sampler():
         self.step_masses = step_masses
         self.m_min   = m_min
         self.m_max   = m_max
+        self.sigma_max = sigma_max
         self.log_mass_posteriors = log_mass_posteriors
         self.delta_M = delta_M
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = a*(b**2)#*len(mass_samples)/initial_cluster_number
-        self.a  = a#len(mass_samples)/(initial_cluster_number/2.)
+        self.b  = a*(b**2)
+        self.a  = a
         self.V  = V
         self.mu = np.mean(mass_samples)
         # Miscellanea
@@ -557,6 +576,9 @@ class MF_Sampler():
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
+        interval = (max(samples)-min(samples))/(self.icn-1)
+        assign = [int((a-min(samples))/interval) for a in samples]
+        print(assign)
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
@@ -569,7 +591,7 @@ class MF_Sampler():
                 "mu": self.mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
-            'assignment': [int((a - a%(len(samples)/self.icn))/(len(samples)/self.icn)) for a in range(len(samples))],
+            'assignment': assign,
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             }
         self.update_suffstats(state)
@@ -599,10 +621,10 @@ class MF_Sampler():
         V_n  = 1/(1/state['hyperparameters_']["V"] + N)
         mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
         b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
-        #b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
         a_n  = state['hyperparameters_']["a"] + N/2.
         # Update t-parameters
         t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
+        t_sigma = min([t_sigma, self.sigma_max])
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
         logL = my_student_t(df = 2*a_n, t = t_x)
@@ -619,7 +641,6 @@ class MF_Sampler():
             return(self.SuffStat(0,0,0))
         mean = (ss.mean*(ss.N)-x)/(ss.N-1)
         var  = (ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1) - mean**2
-        # print((ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1), mean**2, var, ss.N-1, mean, np.sqrt(ss.var), x)
         return self.SuffStat(mean, var, ss.N-1)
     
     def cluster_assignment_distribution(self, data_id, state):
@@ -688,6 +709,7 @@ class MF_Sampler():
             cid = self.sample_assignment(data_id, state)
             state['assignment'][data_id] = cid
             state['suffstats'][cid] = self.add_datapoint_to_suffstats(state['data_'][data_id], state['suffstats'][cid])
+            self.update_suffstats(state)
         self.n_clusters.append(len(state['cluster_ids_']))
     
     def sample_mixture_parameters(self, state):
@@ -702,7 +724,6 @@ class MF_Sampler():
             V_n  = 1/(1/state['hyperparameters_']["V"] + N)
             mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
             b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
-            #b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
             a_n  = state['hyperparameters_']["a"] + N/2.
             # Update t-parameters
             s = stats.invgamma(a_n, scale = b_n).rvs()
