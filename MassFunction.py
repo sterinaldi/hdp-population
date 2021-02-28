@@ -39,7 +39,8 @@ def main():
     parser.add_option("--nthreads", dest = "n_parallel_threads", type = "int", help = "Number of parallel threads to spawn", default = 8)
     parser.add_option("-v", "--verbose", dest = "verbose", action = 'store_true', default = False, help = "Display output")
     parser.add_option("-d", "--diagnostic", dest = "diagnostic", action = 'store_true', default = False, help = "Diagnostic plots")
-    
+    parser.add_option("--sigma_max", dest = "sigma_max", default = 4, help = "Max sigma MF")
+    parser.add_option("--sigma_max_ev", dest = "sigma_max_ev", default = 4, help = "Max sigma SE")
     (options, args) = parser.parse_args()
     
     if options.optfile is not None:
@@ -93,7 +94,9 @@ def main():
                               n_parallel_threads = int(options.n_parallel_threads),
                               injected_density = inj_density,
                               true_masses = options.true_masses,
-                              diagnostic = bool(options.diagnostic)
+                              diagnostic = bool(options.diagnostic),
+                              sigma_max = float(options.sigma_max),
+                              sigma_max_ev = float(options.sigma_max_ev)
                               )
     sampler.run()
     
