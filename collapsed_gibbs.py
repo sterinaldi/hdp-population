@@ -209,7 +209,7 @@ class CGSampler:
         print('Elapsed time: {0}h {1}m {2}s'.format(h, m, s))
         return
         
-ray.init(ignore_reinit_error=True)#, log_to_driver=False)
+ray.init(ignore_reinit_error=True, log_to_driver=False)
 
 @jit(forceobj=True)
 def my_student_t(df, t):
