@@ -209,7 +209,7 @@ class CGSampler:
         print('Elapsed time: {0}h {1}m {2}s'.format(h, m, s))
         return
         
-ray.init(ignore_reinit_error=True, log_to_driver=False)
+ray.init(ignore_reinit_error=True)#, log_to_driver=False)
 
 @jit(forceobj=True)
 def my_student_t(df, t):
@@ -263,6 +263,7 @@ class Sampler_SE:
     def initial_state(self, samples):
         interval = ((max(samples)+1)-min(samples))/(self.icn)
         assign = [int((a-min(samples))/interval) for a in samples]
+        print(assign)
         cluster_ids = list(np.arange(int(np.max(assign))))
         state = {
             'cluster_ids_': cluster_ids,
