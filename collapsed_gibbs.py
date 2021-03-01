@@ -263,9 +263,11 @@ class Sampler_SE:
     def initial_state(self, samples):
         assign = [a%int(self.icn) for a in range(len(samples))]
         cluster_ids = list(np.arange(int(np.max(assign)+1)))
+        samp = np.copy(samples)
+        np.random.shuffle(samp)
         state = {
             'cluster_ids_': cluster_ids,
-            'data_': np.sort(samples),
+            'data_': samp,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'Ntot': len(samples),
@@ -392,7 +394,6 @@ class Sampler_SE:
             cid = self.sample_assignment(data_id, state)
             state['assignment'][data_id] = cid
             state['suffstats'][cid] = self.add_datapoint_to_suffstats(state['data_'][data_id], state['suffstats'][cid])
-            self.update_suffstats(state)
         self.n_clusters.append(len(state['cluster_ids_']))
     
     def sample_mixture_parameters(self, state):
@@ -702,7 +703,6 @@ class MF_Sampler():
             cid = self.sample_assignment(data_id, state)
             state['assignment'][data_id] = cid
             state['suffstats'][cid] = self.add_datapoint_to_suffstats(state['data_'][data_id], state['suffstats'][cid])
-            self.update_suffstats(state)
         self.n_clusters.append(len(state['cluster_ids_']))
     
     def sample_mixture_parameters(self, state):
@@ -831,8 +831,6 @@ class MF_Sampler():
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
         fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
-        if self.diagnostic:
-            self.plot_diagnostic_mass_samples()
         return
 
     def plot_diagnostic_mass_samples(self):
