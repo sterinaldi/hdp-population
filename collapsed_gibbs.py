@@ -263,7 +263,7 @@ class Sampler_SE:
     def initial_state(self, samples):
         interval = (max(samples)-min(samples))/(self.icn)
         assign = [int((a-min(samples))/interval) for a in samples]
-        cluster_ids = list(np.arange(int(np.max(assign))+1))
+        cluster_ids = list(np.arange(int(np.max(assign))))
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
@@ -574,7 +574,7 @@ class MF_Sampler():
     def initial_state(self, samples):
         interval = (max(samples)-min(samples))/(self.icn)
         assign = [int((a-min(samples))/interval) for a in samples]
-        cluster_ids = list(np.arange(int(np.max(assign))+1))
+        cluster_ids = list(np.arange(int(np.max(assign))))
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
