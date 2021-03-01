@@ -261,7 +261,7 @@ class Sampler_SE:
         self.verbose = verbose
         
     def initial_state(self, samples):
-        interval = (max(samples)-min(samples))/(self.icn)
+        interval = ((max(samples)+1)-min(samples))/(self.icn)
         assign = [int((a-min(samples))/interval) for a in samples]
         cluster_ids = list(np.arange(int(np.max(assign))))
         state = {
@@ -572,7 +572,7 @@ class MF_Sampler():
         self.diagnostic = diagnostic
         
     def initial_state(self, samples):
-        interval = (max(samples)-min(samples))/(self.icn)
+        interval = ((max(samples)+1)-min(samples))/(self.icn)
         assign = [int((a-min(samples))/interval) for a in samples]
         cluster_ids = list(np.arange(int(np.max(assign))))
         state = {
