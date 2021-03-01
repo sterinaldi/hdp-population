@@ -209,7 +209,7 @@ class CGSampler:
         print('Elapsed time: {0}h {1}m {2}s'.format(h, m, s))
         return
         
-ray.init(ignore_reinit_error=True)#, log_to_driver=False)
+ray.init(ignore_reinit_error=True, log_to_driver=False)
 
 @jit(forceobj=True)
 def my_student_t(df, t):
@@ -261,9 +261,9 @@ class Sampler_SE:
         self.verbose = verbose
         
     def initial_state(self, samples):
-        cluster_ids = list(np.arange(int(self.icn)))
         interval = (max(samples)-min(samples))/(self.icn)
         assign = [int((a-min(samples))/interval) for a in samples]
+        cluster_ids = list(np.arange(int(np.max(assign))+1))
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
@@ -281,8 +281,6 @@ class Sampler_SE:
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             }
         self.update_suffstats(state)
-        for c_id in state['cluster_ids_']:
-            print(c_id, state['suffstats'][c_id])
         return state
     
     def update_suffstats(self, state):
@@ -303,7 +301,6 @@ class Sampler_SE:
         x = state['data_'][data_id]
         mean = ss.mean
         sigma = ss.var
-        print(np.sqrt(sigma))
         N     = ss.N
         # Update hyperparameters
         V_n  = 1/(1/state['hyperparameters_']["V"] + N)
@@ -575,10 +572,9 @@ class MF_Sampler():
         self.diagnostic = diagnostic
         
     def initial_state(self, samples):
-        cluster_ids = list(np.arange(int(self.icn)))
-        interval = (max(samples)-min(samples))/(self.icn-1)
+        interval = (max(samples)-min(samples))/(self.icn)
         assign = [int((a-min(samples))/interval) for a in samples]
-        print(assign)
+        cluster_ids = list(np.arange(int(np.max(assign))+1))
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
@@ -603,7 +599,6 @@ class MF_Sampler():
             mean = np.array(points_in_cluster).mean()
             var  = np.array(points_in_cluster).var()
             M    = len(points_in_cluster)
-            # print(var, points_in_cluster)
             state['suffstats'][cluster_id] = self.SuffStat(mean, var, M)
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
