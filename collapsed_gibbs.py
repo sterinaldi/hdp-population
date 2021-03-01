@@ -265,7 +265,7 @@ class Sampler_SE:
         cluster_ids = list(np.arange(int(np.max(assign)+1)))
         state = {
             'cluster_ids_': cluster_ids,
-            'data_': sort(samples),
+            'data_': np.sort(samples),
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'Ntot': len(samples),
