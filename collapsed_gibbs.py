@@ -8,6 +8,7 @@ from collections import namedtuple, Counter
 from scipy import stats
 from numpy import random
 from scipy.stats import t as student_t
+from scipy.stats import entropy
 from scipy.special import logsumexp, betaln, gammaln
 from scipy.interpolate import interp1d
 
@@ -81,6 +82,7 @@ class CGSampler:
         if self.m_min < 0.:
             self.m_min = 0.01
         self.m_max   = max([m_max, max(np.array(self.events).flatten())])
+        self.m_max_plot = m_max
         # DP
         self.alpha0 = alpha0
         self.gamma0 = gamma0
@@ -190,7 +192,8 @@ class CGSampler:
                        burnin_masses = self.burnin_masses,
                        step_masses = self.step_masses,
                        diagnostic = self.diagnostic,
-                       sigma_max = self.sigma_max
+                       sigma_max = self.sigma_max,
+                       m_max_plot = self.m_max_plot
                        )
         
         sampler.run()
@@ -537,7 +540,8 @@ class MF_Sampler():
                        burnin_masses = 0,
                        step_masses = 1,
                        diagnostic = False,
-                       sigma_max = 5
+                       sigma_max = 5,
+                       m_max_plot = 50
                        ):
                        
         self.mass_samples  = mass_samples
@@ -551,6 +555,7 @@ class MF_Sampler():
         self.sigma_max = sigma_max
         self.log_mass_posteriors = log_mass_posteriors
         self.delta_M = delta_M
+        self.m_max_plot = m_max_plot
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
@@ -740,7 +745,7 @@ class MF_Sampler():
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
         
-        app  = np.linspace(self.m_min, self.m_max, 1000)
+        app  = np.linspace(self.m_min, self.m_max_plot, 1000)
         percentiles = [5,16, 50, 84, 95]
         
         p = {}
@@ -755,6 +760,7 @@ class MF_Sampler():
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
         p[50] = np.percentile(prob, 50, axis = 1)
+        self.sample_probs = probs
         np.savetxt(self.output_events + '/log_rec_prob_mf.txt', np.array([app, p[50]]).T)
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
@@ -769,6 +775,8 @@ class MF_Sampler():
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
+        ax.set_yscale('log')
+        plt.savefig(self.output_events + '/log_mass_function.pdf', bbox_inches = 'tight')
         if self.injected_density is not None:
             self.ppplot(p, app)
         if self.diagnostic:
@@ -784,27 +792,13 @@ class MF_Sampler():
             fig.savefig(self.output_events +'/components_mf.pdf', bbox_inches = 'tight')
     
     def ppplot(self, p, a):
-        x  = np.linspace(self.m_min, self.m_max, 100)
-        dx = x[1]-x[0]
         f50 = interp1d(a, p[50], bounds_error = False, fill_value = 0)
-        f5 = interp1d(a, p[5], bounds_error = False, fill_value = 0)
-        f95 = interp1d(a, p[95], bounds_error = False, fill_value = 0)
-        f16 = interp1d(a, p[16], bounds_error = False, fill_value = 0)
-        f84 = interp1d(a, p[84], bounds_error = False, fill_value = 0)
         cdft  = []
         cdf50 = []
-        cdf5  = []
-        cdf95 = []
-        cdf16 = []
-        cdf84 = []
         norm = np.sum([self.injected_density(ai)*(a[1]-a[0]) for ai in a])
-        for i in range(len(x)):
-            cdft.append(np.sum([self.injected_density(xi)*dx/norm for xi in x[:i+1]]))
-            cdf50.append(np.sum([f50(xi)*dx for xi in x[:i+1]]))
-            cdf5.append(np.sum([f5(xi)*dx for xi in x[:i+1]]))
-            cdf95.append(np.sum([f95(xi)*dx for xi in x[:i+1]]))
-            cdf16.append(np.sum([f16(xi)*dx for xi in x[:i+1]]))
-            cdf84.append(np.sum([f84(xi)*dx for xi in x[:i+1]]))
+        for i in range(len(a)):
+            cdft.append(np.sum([self.injected_density(xi)*dx/norm for xi in a[:i+1]]))
+            cdf50.append(np.sum([f50(xi)*dx for xi in a[:i+1]]))
         fig = plt.figure()
         ax  = fig.add_subplot(111)
         fig.suptitle('PP plot')
@@ -812,9 +806,14 @@ class MF_Sampler():
         ax.set_ylabel('Reconstructed f(M)')
         ax.plot(np.linspace(0,1, 100), np.linspace(0,1,100), marker = '', linewidth = 0.5, color = 'k')
         ax.plot(cdft, cdf50, ls = '--', marker = '', color = 'r')
-        ax.fill_between(cdft, cdf95, cdf5, color = 'lightgreen', alpha = 0.5)
-        ax.fill_between(cdft, cdf84, cdf16, color = 'aqua', alpha = 0.5)
         plt.savefig(self.output_events+'PPplot.pdf', bbox_inches = 'tight')
+        
+        rec_median = np.array([f50(ai) for ai in a])
+        inj = np.array([injected_density(ai) for ai in a])
+        ent = entropy(inj,rec_median)
+        print('Relative entropy (Kullback-Leiden divergence): {0} nats'.format(ent))
+        np.savetxt(self.output_events + '/relative_entropy.txt', np.array([ent]))
+        
     
     def run(self):
         """
