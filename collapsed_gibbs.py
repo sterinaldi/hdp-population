@@ -79,7 +79,7 @@ class CGSampler:
         self.burnin_masses, self.step_masses = mass_chain_settings
         self.m_min   = min([m_min, min(np.array(self.events).flatten())])
         if self.m_min < 0.:
-            self.m_min = 0.
+            self.m_min = 0.01
         self.m_max   = max([m_max, max(np.array(self.events).flatten())])
         # DP
         self.alpha0 = alpha0
