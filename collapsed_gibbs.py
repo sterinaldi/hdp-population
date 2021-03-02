@@ -79,8 +79,8 @@ class CGSampler:
             self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings
         self.burnin_masses, self.step_masses = mass_chain_settings
 
-        sample_min = np.min([np.min(a) for a in np.array(self.events).flatten()])
-        sample_max = np.max([np.max(a) for a in np.array(self.events).flatten()])
+        sample_min = np.min([np.min(a) for a in np.array(self.events)])
+        sample_max = np.max([np.max(a) for a in np.array(self.events)])
         self.m_min   = min([m_min, sample_min])
         if self.m_min < 0.:
             self.m_min = 0.01
