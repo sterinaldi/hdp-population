@@ -104,7 +104,7 @@ class CGSampler:
         self.output_folder = output_folder
         self.icn = initial_cluster_number
         self.event_samplers = []
-        self.delta_M = np.std(events, axis = 1)
+        self.delta_M = [np.std(e) for e in self.events]
         self.verbose = verbose
         self.process_events = process_events
         self.diagnostic = diagnostic
