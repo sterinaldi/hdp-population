@@ -92,9 +92,10 @@ ray.init(ignore_reinit_error=True)
 http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
 """
 @jit()
-def my_student_t(df, t, mu, sigma, dim):
+def my_student_t(df, t, mu, sigma, dim, s2max = np.ones(len(t))*25):
 
     vals, vecs = np.linalg.eigh(sigma)
+    vals       = np.minimum(vals, s2max)
     logdet     = np.log(vals).sum()
     valsinv    = np.array([1./v for v in vals])
     U          = vecs * np.sqrt(valsinv)
@@ -125,7 +126,8 @@ class Sampler_SE:
                        m_max = 50,
                        output_folder = './',
                        initial_cluster_number = 10,
-                       min_cluster_occupation = 0
+                       min_cluster_occupation = 0,
+                       sigma_max = None
                        ):
         
         self.mass_samples  = mass_samples
@@ -146,6 +148,10 @@ class Sampler_SE:
         self.k  = k
         self.nu  = nu
         self.mu = np.atleast_2d(np.mean(mass_samples, axis = 0))
+        if sigma_max is None:
+            self.sigma_max = np.ones(self.dim)*np.inf
+        else:
+            self.sigma_max = sigma_max
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
