@@ -68,7 +68,8 @@ class CGSampler:
                        true_masses = None,
                        diagnostic = False,
                        sigma_max  = 4,
-                       sigma_max_ev = None
+                       sigma_max_ev = None,
+                       names = None
                        ):
         
         self.events = events
@@ -112,13 +113,17 @@ class CGSampler:
         self.injected_density = injected_density
         self.true_masses = true_masses
         self.output_recprob = self.output_folder + '/reconstructed_events/rec_prob/'
-    
+        if names is not None:
+            self.names = names
+        else:
+            self.names = [str(i+1) for i in range(len(self.events))]
+        
     def initialise_samplers(self, marker):
         event_samplers = []
         for i, ev in enumerate(self.events[marker:marker+self.n_parallel_threads]):
             event_samplers.append(Sampler_SE.remote(
                                             ev,
-                                            marker + i+1,
+                                            self.names[i],
                                             self.burnin_ev,
                                             self.n_draws_ev,
                                             self.step_ev,
@@ -460,7 +465,7 @@ class Sampler_SE:
         p = {}
         
         fig = plt.figure()
-        fig.suptitle('Event {0}'.format(self.e_ID))
+        fig.suptitle('{0}'.format(self.e_ID))
         ax  = fig.add_subplot(111)
         ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
         prob = []
@@ -476,8 +481,8 @@ class Sampler_SE:
         ax.plot(app, p[50], marker = '', color = 'r')
         ax.set_xlabel('$M_1\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        
-        plt.savefig(self.output_pltevents + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        ax.set_xlim(min(self.mass_samples)-5, max(self.mass_samples)+5)
+        plt.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
             ax = fig.add_subplot(5,int(len(self.mixture_samples[:25])/5),i+1)

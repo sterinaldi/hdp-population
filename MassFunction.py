@@ -64,9 +64,11 @@ def main():
     
     event_files = [options.events_path+f for f in os.listdir(options.events_path) if not f.startswith('.')]
     events      = []
+    names       = []
     
     for event in event_files:
         events.append(np.genfromtxt(event))
+        names.append(event.split('/')[-1].split('.')[0])
     
     inj_density = None
     if options.inj_density_file is not None:
@@ -96,7 +98,8 @@ def main():
                               true_masses = options.true_masses,
                               diagnostic = bool(options.diagnostic),
                               sigma_max = float(options.sigma_max),
-                              sigma_max_ev = float(options.sigma_max_ev)
+                              sigma_max_ev = float(options.sigma_max_ev),
+                              names = names
                               )
     sampler.run()
     
