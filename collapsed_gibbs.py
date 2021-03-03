@@ -784,6 +784,7 @@ class MF_Sampler():
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
         ax.set_yscale('log')
+        ax.set_ylim(np.min(p[50]))
         plt.savefig(self.output_events + '/log_mass_function.pdf', bbox_inches = 'tight')
         if self.injected_density is not None:
             self.ppplot(p, app)
