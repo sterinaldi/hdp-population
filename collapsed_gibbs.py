@@ -763,7 +763,7 @@ class MF_Sampler():
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
         p[50] = np.percentile(prob, 50, axis = 1)
-        self.sample_probs = probs
+        self.sample_probs = prob
         np.savetxt(self.output_events + '/log_rec_prob_mf.txt', np.array([app, p[50]]).T)
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
