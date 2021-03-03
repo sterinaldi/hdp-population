@@ -123,7 +123,7 @@ class CGSampler:
         for i, ev in enumerate(self.events[marker:marker+self.n_parallel_threads]):
             event_samplers.append(Sampler_SE.remote(
                                             ev,
-                                            self.names[i],
+                                            self.names[marker+i],
                                             self.burnin_ev,
                                             self.n_draws_ev,
                                             self.step_ev,
@@ -465,7 +465,6 @@ class Sampler_SE:
         p = {}
         
         fig = plt.figure()
-        fig.suptitle('{0}'.format(self.e_ID))
         ax  = fig.add_subplot(111)
         ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
         prob = []
@@ -479,7 +478,7 @@ class Sampler_SE:
         ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
         ax.plot(app, p[50], marker = '', color = 'r')
-        ax.set_xlabel('$M_1\ [M_\\odot]$')
+        ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         ax.set_xlim(min(self.mass_samples)-5, max(self.mass_samples)+5)
         plt.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
@@ -490,7 +489,7 @@ class Sampler_SE:
             for c in s.values():
                 p = np.exp(log_normal_density(app,c['mean'], c['sigma']))*c['weight']
                 ax.plot(app,p, linewidth = 0.4)
-                ax.set_xlabel('$M_1\ [M_\\odot]$')
+                ax.set_xlabel('$M\ [M_\\odot]$')
         plt.tight_layout()
         fig.savefig(self.output_components +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         
@@ -780,7 +779,7 @@ class MF_Sampler():
             norm = np.sum([self.injected_density(a)*(app[1]-app[0]) for a in app])
             density = np.array([self.injected_density(a)/norm for a in app])
             ax.plot(app, density, color = 'm', marker = '', linewidth = 0.5)
-        ax.set_xlabel('$M_1\ [M_\\odot]$')
+        ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
         ax.set_yscale('log')
@@ -796,7 +795,7 @@ class MF_Sampler():
                 for c in s.values():
                     p = np.exp(log_normal_density(app,c['mean'], c['sigma']))*c['weight']
                     ax.plot(app,p, linewidth = 0.4)
-                    ax.set_xlabel('$M_1\ [M_\\odot]$')
+                    ax.set_xlabel('$M\ [M_\\odot]$')
             plt.tight_layout()
             fig.savefig(self.output_events +'/components_mf.pdf', bbox_inches = 'tight')
     
@@ -851,7 +850,6 @@ class MF_Sampler():
             p = np.array([np.exp(self.log_mass_posteriors[i](a)) for a in app])
             ax.hist(masses, bins = int(np.sqrt(len(masses))), density = True)
             ax.plot(app, p, color = 'r', marker = '')
-            fig.suptitle('Event {0}'.format(i+1))
             ax.set_xlabel('$M\ [M_\\odot]$')
             ax.set_ylabel('$p(M)$')
             plt.savefig(self.output_events + '/diagnostic_mass_sampling/event_{0}.pdf'.format(i+1), bbox_inches = 'tight')
