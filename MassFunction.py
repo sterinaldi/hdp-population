@@ -143,8 +143,8 @@ def main():
     app = np.linspace(options.mmin, options.mmax, 1000)
     fig = plt.figure()
     ax  = fig.add_subplot(111)
-    ax.fill_between(app, np.exp(p[95])/norm, np.exp(p[5]), color = 'lightgreen', alpha = 0.5)
-    ax.fill_between(app, np.exp(p[84])/norm, np.exp(p[16]), color = 'aqua', alpha = 0.5)
+    ax.fill_between(app, np.exp(p[95])/norm, np.exp(p[5])/norm, color = 'lightgreen', alpha = 0.5)
+    ax.fill_between(app, np.exp(p[84])/norm, np.exp(p[16])/norm, color = 'aqua', alpha = 0.5)
     ax.plot(app, np.exp(p[50])/norm, marker = '', color = 'r')
     
     if inj_density is not None:
