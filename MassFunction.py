@@ -5,6 +5,8 @@ import optparse as op
 import configparser
 import sys
 import importlib.util
+from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
 
 
 def is_opt_provided (parser, dest):
@@ -41,6 +43,7 @@ def main():
     parser.add_option("-d", "--diagnostic", dest = "diagnostic", action = 'store_true', default = False, help = "Diagnostic plots")
     parser.add_option("--sigma_max", dest = "sigma_max", default = 4, help = "Max sigma MF")
     parser.add_option("--sigma_max_ev", dest = "sigma_max_ev", default = 4, help = "Max sigma SE")
+    parser.add_option("--selfunc", dest = "selection_function", help = "Python module with selection function or text file with M_i and S(M_i) for interp1d")
     (options, args) = parser.parse_args()
     
     if options.optfile is not None:
@@ -54,6 +57,9 @@ def main():
             options.true_masses = None
         if options.inj_density_file == 'None':
             options.inj_density_file = None
+        if options.selection_function == 'None':
+            options.selection_function = None
+            
     options.hyperpars = [float(x) for x in options.hyperpars.split(',')]
     if options.hyperpars_ev is not None:
         options.hyperpars_ev = [float(x) for x in options.hyperpars_ev.split(',')]
@@ -77,6 +83,23 @@ def main():
         inj_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(inj_module)
         inj_density = inj_module.injected_density
+    
+    if options.selection_function is not None:
+        if options.selection_function.endswith('.py'):
+            sel_func_name = options.selection_function.split('/')[-1].split('.')[0]
+            spec = importlib.util.spec_from_file_location(sel_func_name, options.selection_function)
+            sf_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(sf_module)
+            sel_func = sf_module.selection_function
+        else:
+            sf = np.genfromtxt(options.selection_function)
+            sel_func = interp1d(sf[:,0], sf[:,1], bounds_error = False, fill_value = [0,1])
+    
+    if options.selection_function is not None:
+        def filtered_density(x):
+            return sel_func(x)*inj_density(x)
+    else:
+        filtered_density = inj_density
         
     
     sampler = DPGMM.CGSampler(events = events,
@@ -94,7 +117,7 @@ def main():
                               initial_cluster_number = int(options.initial_cluster_number),
                               process_events = bool(options.process_events),
                               n_parallel_threads = int(options.n_parallel_threads),
-                              injected_density = inj_density,
+                              injected_density = filtered_density,
                               true_masses = options.true_masses,
                               diagnostic = bool(options.diagnostic),
                               sigma_max = float(options.sigma_max),
@@ -102,6 +125,38 @@ def main():
                               names = names
                               )
     sampler.run()
+    
+    if options.selection_function is None:
+        exit()
+    
+    obs_mf = np.genfromtxt(options.output + '/mass_function/log_rec_obs_prob_mf.txt', names = True)
+    percentiles = [50, 5, 16, 84, 95]
+    dm = obs_mf['m'][1]-obs_mf['m'][0]
+    mf = {}
+    for p in percentiles:
+        mf[p] = np.array([omf - np.log(sel_func(m)) for m, omf in zip(obs_mf['m'], obs_mf[str(p)])])
+    
+    norm = mf[50].sum()*dm
+    names = ['m']+[str(perc) for perc in percentiles]
+    np.savetxt(options.output + '/mass_function/log_rec_prob_mf.txt',  np.array([app, mf[50], mf[5], mf[16], mf[84], mf[95]]).T, header = names)
+    
+    app = np.linspace(options.mmin, options.mmax, 1000)
+    fig = plt.figure()
+    ax  = fig.add_subplot(111)
+    ax.fill_between(app, np.exp(p[95]), np.exp(p[5]), color = 'lightgreen', alpha = 0.5)
+    ax.fill_between(app, np.exp(p[84]), np.exp(p[16]), color = 'aqua', alpha = 0.5)
+    ax.plot(app, np.exp(p[50]), marker = '', color = 'r')
+    
+    if inj_density is not None:
+        ax.plot(app, [inj_density(a) for a in app], marker = '', color = 'm', ls = 0.7)
+    ax.set_ylim(np.min(np.exp(p[50])))
+    ax.set_xlabel('$M\ [M_\\odot]$')
+    ax.set_ylabel('$p(M)$')
+    plt.savefig(options.output + '/mass_function/mass_function.pdf', bbox_inches = 'tight')
+    ax.set_yscale('log')
+    plt.savefig(options.output + '/mass_function/log_mass_function.pdf', bbox_inches = 'tight')
+    
+        
     
 if __name__=='__main__':
     main()
