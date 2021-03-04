@@ -768,7 +768,8 @@ class MF_Sampler():
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
         p[50] = np.percentile(prob, 50, axis = 1)
         self.sample_probs = prob
-        np.savetxt(self.output_events + '/log_rec_prob_mf.txt', np.array([app, p[50]]).T)
+        names = ['m'] + percentiles
+        np.savetxt(self.output_events + '/log_rec_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = names)
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
@@ -781,10 +782,10 @@ class MF_Sampler():
             ax.plot(app, density, color = 'm', marker = '', linewidth = 0.5)
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        plt.savefig(self.output_events + '/mass_function.pdf', bbox_inches = 'tight')
+        plt.savefig(self.output_events + '/obs_mass_function.pdf', bbox_inches = 'tight')
         ax.set_yscale('log')
         ax.set_ylim(np.min(p[50]))
-        plt.savefig(self.output_events + '/log_mass_function.pdf', bbox_inches = 'tight')
+        plt.savefig(self.output_events + '/log_obs_mass_function.pdf', bbox_inches = 'tight')
         if self.injected_density is not None:
             self.ppplot(p, app)
         if self.diagnostic:
