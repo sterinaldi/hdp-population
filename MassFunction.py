@@ -136,16 +136,16 @@ def main():
     for p in percentiles:
         mf[p] = np.array([omf - np.log(sel_func(m)) for m, omf in zip(obs_mf['m'], obs_mf[str(p)])])
     
-    norm = mf[50].sum()*dm
+    norm = np.exp(mf[50]).sum()*dm
     names = ['m']+[str(perc) for perc in percentiles]
     np.savetxt(options.output + '/mass_function/log_rec_prob_mf.txt',  np.array([app, mf[50], mf[5], mf[16], mf[84], mf[95]]).T, header = names)
     
     app = np.linspace(options.mmin, options.mmax, 1000)
     fig = plt.figure()
     ax  = fig.add_subplot(111)
-    ax.fill_between(app, np.exp(p[95]), np.exp(p[5]), color = 'lightgreen', alpha = 0.5)
-    ax.fill_between(app, np.exp(p[84]), np.exp(p[16]), color = 'aqua', alpha = 0.5)
-    ax.plot(app, np.exp(p[50]), marker = '', color = 'r')
+    ax.fill_between(app, np.exp(p[95])/norm, np.exp(p[5]), color = 'lightgreen', alpha = 0.5)
+    ax.fill_between(app, np.exp(p[84])/norm, np.exp(p[16]), color = 'aqua', alpha = 0.5)
+    ax.plot(app, np.exp(p[50])/norm, marker = '', color = 'r')
     
     if inj_density is not None:
         ax.plot(app, [inj_density(a) for a in app], marker = '', color = 'm', ls = 0.7)
