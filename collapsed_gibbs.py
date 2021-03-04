@@ -770,7 +770,7 @@ class MF_Sampler():
             p[perc] = np.percentile(prob, perc, axis = 1)
         self.sample_probs = prob
         names = ['m'] + [str(perc) for perc in percentiles]
-        np.savetxt(self.output_events + '/log_rec_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = names)
+        np.savetxt(self.output_events + '/log_rec_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         

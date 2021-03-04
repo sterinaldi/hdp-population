@@ -138,7 +138,7 @@ def main():
     
     norm = np.exp(mf[50]).sum()*dm
     names = ['m']+[str(perc) for perc in percentiles]
-    np.savetxt(options.output + '/mass_function/log_rec_prob_mf.txt',  np.array([app, mf[50], mf[5], mf[16], mf[84], mf[95]]).T, header = names)
+    np.savetxt(options.output + '/mass_function/log_rec_prob_mf.txt',  np.array([app, mf[50], mf[5], mf[16], mf[84], mf[95]]).T, header = ' '.join(names))
     
     app = np.linspace(options.mmin, options.mmax, 1000)
     fig = plt.figure()
