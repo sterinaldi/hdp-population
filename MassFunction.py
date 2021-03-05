@@ -144,9 +144,9 @@ def main():
 
     fig = plt.figure()
     ax  = fig.add_subplot(111)
-    ax.fill_between(app, np.exp(p[95])/norm, np.exp(p[5])/norm, color = 'lightgreen', alpha = 0.5)
-    ax.fill_between(app, np.exp(p[84])/norm, np.exp(p[16])/norm, color = 'aqua', alpha = 0.5)
-    ax.plot(app, np.exp(p[50])/norm, marker = '', color = 'r')
+    ax.fill_between(app, np.exp(mf[95])/norm, np.exp(mf[5])/norm, color = 'lightgreen', alpha = 0.5)
+    ax.fill_between(app, np.exp(mf[84])/norm, np.exp(mf[16])/norm, color = 'aqua', alpha = 0.5)
+    ax.plot(app, np.exp(mf[50])/norm, marker = '', color = 'r')
     
     if inj_density is not None:
         ax.plot(app, [inj_density(a) for a in app], marker = '', color = 'm', ls = 0.7)
