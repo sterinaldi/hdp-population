@@ -149,7 +149,7 @@ def main():
     ax.plot(app, np.exp(mf[50])/norm, marker = '', color = 'r')
     
     if inj_density is not None:
-        ax.plot(app, [inj_density(a) for a in app], marker = '', color = 'm', ls = 0.7)
+        ax.plot(app, [inj_density(a) for a in app], marker = '', color = 'm', linewidth = 0.7)
     ax.set_ylim(np.min(np.exp(p[50])))
     ax.set_xlabel('$M\ [M_\\odot]$')
     ax.set_ylabel('$p(M)$')
