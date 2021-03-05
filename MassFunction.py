@@ -41,6 +41,7 @@ def main():
     parser.add_option("--nthreads", dest = "n_parallel_threads", type = "int", help = "Number of parallel threads to spawn", default = 8)
     parser.add_option("-v", "--verbose", dest = "verbose", action = 'store_true', default = False, help = "Display output")
     parser.add_option("-d", "--diagnostic", dest = "diagnostic", action = 'store_true', default = False, help = "Diagnostic plots")
+    parser.add_option("-p", "--postprocessing", dest = "postprocessing", action = 'store_true', default = False, help = "Postprocessing - requires log_rec_prob_mf.txt")
     parser.add_option("--sigma_max", dest = "sigma_max", default = 4, help = "Max sigma MF")
     parser.add_option("--sigma_max_ev", dest = "sigma_max_ev", default = 4, help = "Max sigma SE")
     parser.add_option("--selfunc", dest = "selection_function", help = "Python module with selection function or text file with M_i and S(M_i) for interp1d")
@@ -124,7 +125,8 @@ def main():
                               sigma_max_ev = float(options.sigma_max_ev),
                               names = names
                               )
-    sampler.run()
+    if not bool(options.postprocessing):
+        sampler.run()
     
     if options.selection_function is None:
         exit()
