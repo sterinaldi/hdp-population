@@ -807,8 +807,8 @@ class MF_Sampler():
         cdf50 = []
         norm = np.sum([self.injected_density(ai)*(a[1]-a[0]) for ai in a])
         for i in range(len(a)):
-            cdft.append(np.sum([self.injected_density(xi)*dx/norm for xi in a[:i+1]]))
-            cdf50.append(np.sum([f50(xi)*dx for xi in a[:i+1]]))
+            cdft.append(np.sum([self.injected_density(xi)**(a[1]-a[0])/norm for xi in a[:i+1]]))
+            cdf50.append(np.sum([f50(xi)**(a[1]-a[0]) for xi in a[:i+1]]))
         fig = plt.figure()
         ax  = fig.add_subplot(111)
         fig.suptitle('PP plot')
