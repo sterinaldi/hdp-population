@@ -102,8 +102,8 @@ def main():
     else:
         filtered_density = inj_density
         
-    
-    sampler = DPGMM.CGSampler(events = events,
+    if not bool(options.postprocessing):
+        sampler = DPGMM.CGSampler(events = events,
                               samp_settings = options.samp_settings,
                               samp_settings_ev = options.samp_settings_ev,
                               mass_chain_settings = options.mc_settings,
@@ -125,7 +125,6 @@ def main():
                               sigma_max_ev = float(options.sigma_max_ev),
                               names = names
                               )
-    if not bool(options.postprocessing):
         sampler.run()
     
     if options.selection_function is None:
