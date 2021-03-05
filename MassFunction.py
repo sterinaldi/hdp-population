@@ -143,6 +143,7 @@ def main():
     np.savetxt(options.output + '/mass_function/log_rec_prob_mf.txt',  np.array([app, mf[50], mf[5], mf[16], mf[84], mf[95]]).T, header = ' '.join(names))
 
     fig = plt.figure()
+    fig.suptitle('Mass function')
     ax  = fig.add_subplot(111)
     ax.fill_between(app, np.exp(mf[95])/norm, np.exp(mf[5])/norm, color = 'lightgreen', alpha = 0.5)
     ax.fill_between(app, np.exp(mf[84])/norm, np.exp(mf[16])/norm, color = 'aqua', alpha = 0.5)
