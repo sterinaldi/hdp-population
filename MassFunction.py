@@ -130,6 +130,7 @@ def main():
     if options.selection_function is None:
         exit()
     
+    app = np.linspace(options.mmin, options.mmax, 1000)
     obs_mf = np.genfromtxt(options.output + '/mass_function/log_rec_obs_prob_mf.txt', names = True)
     percentiles = [50, 5, 16, 84, 95]
     dm = obs_mf['m'][1]-obs_mf['m'][0]
@@ -140,8 +141,7 @@ def main():
     norm = np.exp(mf[50]).sum()*dm
     names = ['m']+[str(perc) for perc in percentiles]
     np.savetxt(options.output + '/mass_function/log_rec_prob_mf.txt',  np.array([app, mf[50], mf[5], mf[16], mf[84], mf[95]]).T, header = ' '.join(names))
-    
-    app = np.linspace(options.mmin, options.mmax, 1000)
+
     fig = plt.figure()
     ax  = fig.add_subplot(111)
     ax.fill_between(app, np.exp(p[95])/norm, np.exp(p[5])/norm, color = 'lightgreen', alpha = 0.5)
