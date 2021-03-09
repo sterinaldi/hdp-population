@@ -761,8 +761,8 @@ class MF_Sampler():
         fig.suptitle('Observed mass function')
         ax  = fig.add_subplot(111)
         if self.true_masses is not None:
-            truths = np.genfromtxt(self.true_masses)
-            ax.hist(truths, bins = int(np.sqrt(len(truths))), histtype = 'step', density = True)
+            truths = np.genfromtxt(self.true_masses, names = True)
+            ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True)
         prob = []
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
@@ -819,7 +819,7 @@ class MF_Sampler():
         plt.savefig(self.output_events+'PPplot.pdf', bbox_inches = 'tight')
         
         rec_median = np.array([f50(ai) for ai in a])
-        inj = np.array([injected_density(ai) for ai in a])
+        inj = np.array([self.injected_density(ai)/norm for ai in a])
         ent = entropy(inj,rec_median)
         print('Relative entropy (Kullback-Leiden divergence): {0} nats'.format(ent))
         np.savetxt(self.output_events + '/relative_entropy.txt', np.array([ent]))
