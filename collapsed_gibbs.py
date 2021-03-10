@@ -15,8 +15,10 @@ from scipy.interpolate import interp1d
 from time import perf_counter
 
 from numba import jit
+from numba import prange
 import ray
 from ray.util import ActorPool
+
 
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
@@ -861,7 +863,7 @@ class MF_Sampler():
     def update_mass_posteriors(self, state):
         # Parallelizzabile
         for _ in range(self.step_masses):
-            for index in range(len(self.log_mass_posteriors)):
+            for index in prange(len(self.log_mass_posteriors)):
                 self.update_single_posterior(index)
         state['data_'] = self.mass_samples
     

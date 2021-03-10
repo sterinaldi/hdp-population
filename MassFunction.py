@@ -94,7 +94,7 @@ def main():
             sel_func = sf_module.selection_function
         else:
             sf = np.genfromtxt(options.selection_function)
-            sel_func = interp1d(sf[:,0], sf[:,1], bounds_error = False, fill_value = [sf[:,1][0],sf[:,1][-1]])
+            sel_func = interp1d(sf[:,0], sf[:,1], bounds_error = False, fill_value = (sf[:,1][0],sf[:,1][-1]))
     
     if options.selection_function is not None:
         def filtered_density(x):
