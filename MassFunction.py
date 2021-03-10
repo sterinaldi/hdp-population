@@ -47,6 +47,7 @@ def main():
     parser.add_option("--selfunc", dest = "selection_function", help = "Python module with selection function or text file with M_i and S(M_i) for interp1d")
     (options, args) = parser.parse_args()
     
+    print('Reading options...')
     if options.optfile is not None:
         config = configparser.ConfigParser()
         config.read(options.optfile)
