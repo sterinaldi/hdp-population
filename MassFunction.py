@@ -69,14 +69,16 @@ def main():
         options.samp_settings_ev = [int(x) for x in options.samp_settings_ev.split(',')]
     options.mc_settings = [int(x) for x in options.mc_settings.split(',')]
     
+    print('Reading events...')
     event_files = [options.events_path+f for f in os.listdir(options.events_path) if not f.startswith('.')]
     events      = []
     names       = []
     
+    print('Loading events...')
     for event in event_files:
         events.append(np.genfromtxt(event))
         names.append(event.split('/')[-1].split('.')[0])
-    
+    print('Done!')
     inj_density = None
     if options.inj_density_file is not None:
         inj_file_name = options.inj_density_file.split('/')[-1].split('.')[0]
