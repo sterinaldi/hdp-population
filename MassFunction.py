@@ -103,6 +103,7 @@ def main():
         filtered_density = inj_density
         
     if not bool(options.postprocessing):
+        print('Initialising sampler...')
         sampler = DPGMM.CGSampler(events = events,
                               samp_settings = options.samp_settings,
                               samp_settings_ev = options.samp_settings_ev,
