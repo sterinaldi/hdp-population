@@ -277,7 +277,7 @@ class Sampler_SE:
         assign = [a%int(self.icn) for a in range(len(samples))]
         cluster_ids = list(np.arange(int(np.max(assign)+1)))
         samp = np.copy(samples)
-        np.random.shuffle(samp)
+#        np.random.shuffle(samp)
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samp,
@@ -713,6 +713,8 @@ class MF_Sampler():
             # print(cid)
             state['suffstats'][cid] = self.remove_datapoint_from_suffstats(datapoint, state['suffstats'][cid])
             self.prune_clusters(state)
+            for _ in range(self.burnin_masses):
+                self.update_single_posterior(data_id)
             cid = self.sample_assignment(data_id, state)
             state['assignment'][data_id] = cid
             state['suffstats'][cid] = self.add_datapoint_to_suffstats(state['data_'][data_id], state['suffstats'][cid])
@@ -860,15 +862,15 @@ class MF_Sampler():
         return
         
 
-    def update_mass_posteriors(self, state):
+    def update_mass_posteriors(self):
         # Parallelizzabile
         for _ in range(self.step_masses):
             for index in prange(len(self.log_mass_posteriors)):
                 self.update_single_posterior(index)
-        state['data_'] = self.mass_samples
+        self.state['data_'] = self.mass_samples
     
     def update_single_posterior(self, e_index):
-        M_old = self.mass_samples[e_index]
+        M_old = self.state['data_'][e_index]
         M_new = draw_mass(M_old, self.delta_M[e_index])
         if not self.m_min < M_new < self.m_max:
             return
@@ -876,31 +878,31 @@ class MF_Sampler():
         p_new = self.log_mass_posteriors[e_index](M_new)
         
         if p_new - p_old > np.log(random.uniform()):
-            self.mass_samples[e_index] = M_new
+            self.state['data_'][e_index] = M_new
         self.check_masses[e_index].append(self.mass_samples[e_index])
         return
     
     def run_sampling(self):
         self.check_masses = [[] for _ in range(len(self.mass_samples))]
-        state = self.initial_state(self.mass_samples)
-        for i in range(self.burnin_masses):
-            print('\rTERMALIZING MASS SAMPLES: {0}/{1}'.format(i+1, self.burnin_masses), end = '')
-            self.update_mass_posteriors(state)
-        state = self.initial_state(self.mass_samples)
+        self.state = self.initial_state(self.mass_samples)
+#        for i in range(self.burnin_masses):
+#            print('\rTERMALIZING MASS SAMPLES: {0}/{1}'.format(i+1, self.burnin_masses), end = '')
+#            self.update_mass_posteriors()
+#        self.state = self.initial_state(self.mass_samples)
         print('\n', end = '')
         for i in range(self.burnin):
             print('\rBURN-IN MF: {0}/{1}'.format(i+1, self.burnin), end = '')
-            self.update_mass_posteriors(state)
-            self.update_suffstats(state)
-            self.gibbs_step(state)
+            self.update_mass_posteriors()
+            self.update_suffstats(self.state)
+            self.gibbs_step(self.state)
         print('\n', end = '')
         for i in range(self.n_draws):
             print('\rSAMPLING MF: {0}/{1}'.format(i+1, self.n_draws), end = '')
             for _ in range(self.step):
-                self.update_mass_posteriors(state)
-                self.update_suffstats(state)
-                self.gibbs_step(state)
-            self.sample_mixture_parameters(state)
+                self.update_mass_posteriors()
+                self.update_suffstats(self.state)
+                self.gibbs_step(self.state)
+            self.sample_mixture_parameters(self.state)
         print('\n', end = '')
         return
         
