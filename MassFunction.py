@@ -130,7 +130,7 @@ def main():
                               sigma_max = float(options.sigma_max),
                               sigma_max_ev = float(options.sigma_max_ev),
                               names = names,
-                              autocorrelation = bool(options.autocorrelation)
+                              autocorrelation = bool(options.autocorrelation),
                               autocorrelation_ev = bool(options.autocorrelation_ev)
                               )
         sampler.run()
