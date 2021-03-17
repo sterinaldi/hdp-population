@@ -628,6 +628,7 @@ class MF_Sampler():
         self.injected_density = injected_density
         self.true_masses = true_masses
         self.diagnostic = diagnostic
+        self.autocorrelation = autocorrelation
         
     def initial_state(self, samples):
         assign = [a%int(self.icn) for a in range(len(samples))]
