@@ -526,8 +526,8 @@ class Sampler_SE:
         square = np.sum(self.median_mf**2*dx)
         autocorrelation = []
         taus = []
-        for tau in range(len(self.sample_probs)//2):
-            autocorrelation.append([np.sum(sample[i]*sample[(i+tau)%len(self.sample_probs)]*dx) for i in range(len(self.sample_probs))] - square)
+        for tau in range(self.n_draws//2):
+            autocorrelation.append(np.mean(np.array([np.sum((np.array(self.sample_probs)[:,i] - self.median_mf)*(np.array(self.sample_probs)[:,(i+tau)%self.n_draws]-self.median_mf)*dx) for i in range(self.n_draws)])))
             taus.append(tau + 1)
         fig = plt.figure()
         ax  = fig.add_subplot(111)
