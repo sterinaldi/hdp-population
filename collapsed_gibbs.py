@@ -592,7 +592,8 @@ class MF_Sampler():
                        step_masses = 1,
                        diagnostic = False,
                        sigma_max = 5,
-                       m_max_plot = 50
+                       m_max_plot = 50,
+                       autocorrelation = False
                        ):
                        
         self.mass_samples  = mass_samples
