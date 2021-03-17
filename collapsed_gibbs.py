@@ -867,7 +867,7 @@ class MF_Sampler():
         autocorrelation = []
         taus = []
         for tau in range(len(self.sample_probs)//2):
-            autocorrelation.append([np.sum(sample[i]*sample[(i+tau)%len(self.sample_probs)]*dx) for i in range(len(self.sample_probs))] - square)
+            autocorrelation.append([np.sum(self.sample_probs[i]*self.sample_probs[(i+tau)%len(self.sample_probs)]*dx) for i in range(len(self.sample_probs))] - square)
             taus.append(tau + 1)
         fig = plt.figure()
         ax  = fig.add_subplot(111)
