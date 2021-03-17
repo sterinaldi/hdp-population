@@ -71,7 +71,9 @@ class CGSampler:
                        diagnostic = False,
                        sigma_max  = 4,
                        sigma_max_ev = None,
-                       names = None
+                       names = None,
+                       autocorrelation = False,
+                       autocorrelation_ev = False
                        ):
         
         self.events = events
@@ -119,6 +121,8 @@ class CGSampler:
             self.names = names
         else:
             self.names = [str(i+1) for i in range(len(self.events))]
+        self.autocorrelation = autocorrelation
+        self.autocorrelation_ev = autocorrelation_ev
         
     def initialise_samplers(self, marker):
         event_samplers = []
@@ -138,7 +142,8 @@ class CGSampler:
                                             self.output_folder,
                                             False,
                                             self.icn,
-                                            self.sigma_max_ev
+                                            self.sigma_max_ev,
+                                            self.autocorrelation_ev
                                             ))
         return event_samplers
         
@@ -217,7 +222,8 @@ class CGSampler:
                        step_masses = self.step_masses,
                        diagnostic = self.diagnostic,
                        sigma_max = self.sigma_max,
-                       m_max_plot = self.m_max_plot
+                       m_max_plot = self.m_max_plot,
+                       autocorrelation = self.autocorrelation
                        )
         
         sampler.run()
@@ -259,7 +265,8 @@ class Sampler_SE:
                        output_folder = './',
                        verbose = True,
                        initial_cluster_number = 5.,
-                       sigma_max = 5.
+                       sigma_max = 5.,
+                       autocorrelation = False
                        ):
         
         self.mass_samples  = mass_samples
@@ -286,6 +293,7 @@ class Sampler_SE:
         self.mixture_samples = []
         self.n_clusters = []
         self.verbose = verbose
+        self.autocorrelation = autocorrelation
         
     def initial_state(self, samples):
         assign = [a%int(self.icn) for a in range(len(samples))]
@@ -489,6 +497,9 @@ class Sampler_SE:
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
+        self.sample_probs = prob
+        self.median_mf = np.array(p[50])
+        
         ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
         ax.plot(app, p[50], marker = '', color = 'r')
@@ -507,6 +518,23 @@ class Sampler_SE:
                 ax.set_xlabel('$M\ [M_\\odot]$')
         plt.tight_layout()
         fig.savefig(self.output_components +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        if self.autocorrelation:
+            self.compute_autocorrelation()
+    
+    def compute_autocorrelation(self):
+        dx = (self.m_max_plot - self.m_min)/1000.
+        square = np.sum(self.median_mf**2*dx)
+        autocorrelation = []
+        taus = []
+        for tau in range(len(self.sample_probs)//2):
+            autocorrelation.append([np.sum(sample[i]*sample[(i+tau)%len(self.sample_probs)]*dx) for i in range(len(self.sample_probs))] - square)
+            taus.append(tau + 1)
+        fig = plt.figure()
+        ax  = fig.add_subplot(111)
+        ax.plot(taus, autocorrelation, marker = '')
+        ax.set_xlabel('$\\tau$ [a.u.]')
+        ax.set_ylabel('Autocorrelation')
+        plt.savefig(self.output_events+'/autocorrelation.pdf', bbox_inches = 'tight')
         
     def run(self):
         """
@@ -796,6 +824,7 @@ class MF_Sampler():
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
         self.sample_probs = prob
+        self.median_mf = np.array(p[50])
         names = ['m'] + [str(perc) for perc in percentiles]
         np.savetxt(self.output_events + '/log_rec_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
         for perc in percentiles:
@@ -827,6 +856,24 @@ class MF_Sampler():
                     ax.set_xlabel('$M\ [M_\\odot]$')
             plt.tight_layout()
             fig.savefig(self.output_events +'/components_mf.pdf', bbox_inches = 'tight')
+        if self.autocorrelation:
+            self.compute_autocorrelation()
+    
+    def compute_autocorrelation(self):
+        dx = (self.m_max_plot - self.m_min)/1000.
+        square = np.sum(self.median_mf**2*dx)
+        autocorrelation = []
+        taus = []
+        for tau in range(len(self.sample_probs)//2):
+            autocorrelation.append([np.sum(sample[i]*sample[(i+tau)%len(self.sample_probs)]*dx) for i in range(len(self.sample_probs))] - square)
+            taus.append(tau + 1)
+        fig = plt.figure()
+        ax  = fig.add_subplot(111)
+        ax.plot(taus, autocorrelation, marker = '')
+        ax.set_xlabel('$\\tau$ [a.u.]')
+        ax.set_ylabel('Autocorrelation')
+        plt.savefig(self.output_events+'/autocorrelation.pdf', bbox_inches = 'tight')
+
     
     def ppplot(self, p, a):
         f50 = interp1d(a, p[50], bounds_error = False, fill_value = 0)

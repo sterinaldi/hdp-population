@@ -45,6 +45,8 @@ def main():
     parser.add_option("--sigma_max", dest = "sigma_max", default = 2, help = "Max sigma MF")
     parser.add_option("--sigma_max_ev", dest = "sigma_max_ev", default = 2, help = "Max sigma SE")
     parser.add_option("--selfunc", dest = "selection_function", help = "Python module with selection function or text file with M_i and S(M_i) for interp1d")
+    parser.add_option("--autocorr", dest = "autocorrelation", help = "Compute mass function autocorrelation?", action = 'store_true', default = False)
+    parser.add_option("--autocorr_ev", dest = "autocorrelation_ev", help = "Compute single event autocorrelation?", action = 'store_true', default = False)
     (options, args) = parser.parse_args()
     
     print('Reading options...')
@@ -127,7 +129,9 @@ def main():
                               diagnostic = bool(options.diagnostic),
                               sigma_max = float(options.sigma_max),
                               sigma_max_ev = float(options.sigma_max_ev),
-                              names = names
+                              names = names,
+                              autocorrelation = bool(options.autocorrelation)
+                              autocorrelation_ev = bool(options.autocorrelation_ev)
                               )
         sampler.run()
     
