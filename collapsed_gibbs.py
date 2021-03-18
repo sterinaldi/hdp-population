@@ -678,7 +678,7 @@ class MF_Sampler():
         a_n  = state['hyperparameters_']["a"] + N/2.
         # Update t-parameters
         t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
-        t_sigma = min([t_sigma, np.sqrt(self.sigma_max**2+ss.sm)])
+        t_sigma = min([t_sigma, self.sigma_max])
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
         logL = my_student_t(df = 2*a_n, t = t_x)
@@ -787,9 +787,6 @@ class MF_Sampler():
 #           Update t-parameters
             s = stats.invgamma(a_n, scale = b_n).rvs()
             m = stats.norm(mu_n, s*V_n).rvs()
-            s = s - ss[cid].sm
-            if s < 0.001:
-                s = 0.001
             components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
         self.mixture_samples.append(components)
     
