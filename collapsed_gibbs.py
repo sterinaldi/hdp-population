@@ -149,10 +149,12 @@ class CGSampler:
         
     def run_event_sampling(self):
         i = 0
+        self.posterior_functions_events = []
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
             tasks = self.initialise_samplers(n*self.n_parallel_threads)
             pool = ActorPool(tasks)
-            for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
+            for s in pool.map(lambda a, v: a.run.remote(), range(len(tasks))):
+                self.posterior_functions_events.append(s.posterior_functions)
                 i += 1
                 print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
         return
@@ -202,6 +204,7 @@ class CGSampler:
             
         sampler = MF_Sampler(self.mt,
                        self.log_mass_posteriors,
+                       self.posterior_functions_events,
                        self.second_moments,
                        self.burnin_mf,
                        self.n_draws_mf,
@@ -497,6 +500,19 @@ class Sampler_SE:
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
+        prob = np.array(prob)
+        
+        ent = []
+        self.posterior_functions = []
+        
+        for i in range(np.shape(prob)[1]):
+            sample = np.exp(prob[:,i])+
+            self.posterior_functions.append(interp1d(app, prob[:,i], bounds_error = False, fill_value = -np.inf))
+            ent.append(entropy(sample,p[50]))
+        mean_ent = np.mean(ent)
+        np.savetxt(self.output_folder + '/reconstructed_events/KLdiv.txt', np.array(ent), header = 'mean entropy = {0}'.format(mean_ent))
+            
+        
         self.sample_probs = prob
         self.median_mf = np.array(p[50])
         
@@ -572,6 +588,7 @@ class MF_Sampler():
     # inheriting from actor class is not currently supported
     def __init__(self, mass_samples,
                        log_mass_posteriors,
+                       posterior_functions_events,
                        second_moments,
                        burnin,
                        n_draws,
@@ -606,7 +623,9 @@ class MF_Sampler():
         self.m_max   = m_max
         self.sigma_max = sigma_max
         self.log_mass_posteriors = log_mass_posteriors
+        self.posterior_functions_events = posterior_functions_events
         self.second_moments = second_moments
+        self.mean_sigma = np.sqrt(np.mean(self.second_moments))
         self.delta_M = delta_M
         self.m_max_plot = m_max_plot
         # DP parameters
@@ -624,6 +643,7 @@ class MF_Sampler():
         self.output_folder = output_folder
         self.mixture_samples = []
         self.n_clusters = []
+        self.saved_masses = []
         self.verbose = verbose
         self.injected_density = injected_density
         self.true_masses = true_masses
@@ -789,6 +809,7 @@ class MF_Sampler():
             m = stats.norm(mu_n, s*V_n).rvs()
             components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
         self.mixture_samples.append(components)
+        self.saved_masses.append(state['data_'])
     
     
     def display_config(self):
@@ -807,6 +828,7 @@ class MF_Sampler():
         """
         
         app  = np.linspace(self.m_min, self.m_max_plot, 1000)
+        da = app[1]-app[0]
         percentiles = [50, 5,16, 84, 95]
         
         p = {}
@@ -944,8 +966,10 @@ class MF_Sampler():
         M_new = draw_mass(M_old, self.delta_M[e_index])
         if not self.m_min < M_new < self.m_max:
             return
-        p_old = self.log_mass_posteriors[e_index](M_old)
-        p_new = self.log_mass_posteriors[e_index](M_new)
+        # selecting random posterior from pool
+        random_index = random.randint(0, len(self..posterior_functions_events[e_index]))
+        p_old = self.posterior_functions_events[e_index][random_index](M_old)
+        p_new = self.posterior_functions_events[e_index][random_index](M_new)
         
         if p_new - p_old > np.log(random.uniform()):
             self.state['data_'][e_index] = M_new
