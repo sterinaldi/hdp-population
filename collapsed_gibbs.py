@@ -506,7 +506,7 @@ class Sampler_SE:
         self.posterior_functions = []
         
         for i in range(np.shape(prob)[1]):
-            sample = np.exp(prob[:,i])+
+            sample = np.exp(prob[:,i])
             self.posterior_functions.append(interp1d(app, prob[:,i], bounds_error = False, fill_value = -np.inf))
             ent.append(entropy(sample,p[50]))
         mean_ent = np.mean(ent)
