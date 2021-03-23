@@ -18,6 +18,7 @@ from numba import jit
 from numba import prange
 import ray
 from ray.util import ActorPool
+import pickle
 
 
 """
@@ -116,7 +117,7 @@ class CGSampler:
         self.n_parallel_threads = n_parallel_threads
         self.injected_density = injected_density
         self.true_masses = true_masses
-        self.output_recprob = self.output_folder + '/reconstructed_events/rec_prob/'
+        self.output_recprob = self.output_folder + '/reconstructed_events/pickle/'
         if names is not None:
             self.names = names
         else:
@@ -161,12 +162,13 @@ class CGSampler:
     
     def load_mixtures(self):
         print('Loading mixtures...')
-        self.log_mass_posteriors = []
-        prob_files = [self.output_recprob+f for f in os.listdir(self.output_recprob) if f.startswith('log_rec_prob_')]
+        self.posterior_functions_events = []
+        prob_files = [self.output_recprob+f for f in os.listdir(self.output_recprob) if f.startswith('posterior_functions')]
         prob_files.sort(key = natural_keys)
         for prob in prob_files:
-            rec_prob = np.genfromtxt(prob)
-            self.log_mass_posteriors.append(interp1d(rec_prob[:,0], rec_prob[:,1], bounds_error = False, fill_value = -np.inf))
+            sampfile = open(prob, 'rb')
+            samps = pickle.load(sampfile)
+            self.posterior_functions_events.append(samps)
     
     def display_config(self):
         print('Collapsed Gibbs sampler')
@@ -196,14 +198,13 @@ class CGSampler:
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
-        self.mt, self.log_mass_posteriors = sort_matrix([self.mt, self.log_mass_posteriors], axis = 0)
+        self.mt, self.posterior_functions_events = sort_matrix([self.mt, self.posterior_functions_events], axis = 0)
         self.compute_moments()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
             
         sampler = MF_Sampler(self.mt,
-                       self.log_mass_posteriors,
                        self.posterior_functions_events,
                        self.second_moments,
                        self.burnin_mf,
@@ -481,7 +482,7 @@ class Sampler_SE:
         print('------------------------')
         return
 
-    def plot_samples(self):
+    def postprocess(self):
         """
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
@@ -510,8 +511,11 @@ class Sampler_SE:
             self.posterior_functions.append(interp1d(app, prob[:,i], bounds_error = False, fill_value = -np.inf))
             ent.append(entropy(sample,p[50]))
         mean_ent = np.mean(ent)
-        np.savetxt(self.output_folder + '/reconstructed_events/KLdiv.txt', np.array(ent), header = 'mean entropy = {0}'.format(mean_ent))
-            
+        np.savetxt(self.output_entropy + '/KLdiv_{0}.txt'.format(self.e_ID), np.array(ent), header = 'mean entropy = {0}'.format(mean_ent))
+        
+        picklefile = open(self.output_pickle + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
+        pickle.dump(self.posterior_functions, picklefile)
+        picklefile.close()
         
         self.sample_probs = prob
         self.median_mf = np.array(p[50])
@@ -536,6 +540,10 @@ class Sampler_SE:
         fig.savefig(self.output_components +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         if self.autocorrelation:
             self.compute_autocorrelation()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
+        fig.savefig(self.output_n_clusters+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
     
     
     def compute_autocorrelation(self):
@@ -575,20 +583,19 @@ class Sampler_SE:
         if not os.path.exists(self.output_events + '/components/'):
             os.mkdir(self.output_events + '/components/')
         self.output_components = self.output_events + '/components/'
+        if not os.path.exists(self.output_events + '/pickle/'):
+            os.mkdir(self.output_events + '/pickle/')
+        self.output_pickle = self.output_events + '/pickle/'
+        if not os.path.exists(self.output_events + '/entropy/'):
+            os.mkdir(self.output_events + '/entropy/')
+        self.output_entropy = self.output_events + '/entropy/'
         self.run_sampling()
-        self.plot_samples()
-        
-            
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_n_clusters+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
-        return self.posterior_functions
+        self.postprocess()
+        return
 
 class MF_Sampler():
     # inheriting from actor class is not currently supported
     def __init__(self, mass_samples,
-                       log_mass_posteriors,
                        posterior_functions_events,
                        second_moments,
                        burnin,
@@ -623,7 +630,6 @@ class MF_Sampler():
         self.m_min   = m_min
         self.m_max   = m_max
         self.sigma_max = sigma_max
-        self.log_mass_posteriors = log_mass_posteriors
         self.posterior_functions_events = posterior_functions_events
         self.second_moments = second_moments
         self.mean_sigma = np.sqrt(np.mean(self.second_moments))
@@ -938,22 +944,6 @@ class MF_Sampler():
         fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
         return
 
-    def plot_diagnostic_mass_samples(self):
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        if not os.path.exists(self.output_events + '/diagnostic_mass_sampling/'):
-            os.mkdir(self.output_events + '/diagnostic_mass_sampling/')
-        for i, masses in enumerate(self.check_masses):
-            app = np.linspace(min(masses), max(masses), 1000)
-            p = np.array([np.exp(self.log_mass_posteriors[i](a)) for a in app])
-            ax.hist(masses, bins = int(np.sqrt(len(masses))), density = True)
-            ax.plot(app, p, color = 'r', marker = '')
-            ax.set_xlabel('$M\ [M_\\odot]$')
-            ax.set_ylabel('$p(M)$')
-            plt.savefig(self.output_events + '/diagnostic_mass_sampling/event_{0}.pdf'.format(i+1), bbox_inches = 'tight')
-            ax.clear()
-        return
-        
 
     def update_mass_posteriors(self):
         # Parallelizzabile
@@ -979,11 +969,6 @@ class MF_Sampler():
     def run_sampling(self):
         self.check_masses = [[] for _ in range(len(self.mass_samples))]
         self.state = self.initial_state(self.mass_samples)
-#        for i in range(self.burnin_masses):
-#            print('\rTERMALIZING MASS SAMPLES: {0}/{1}'.format(i+1, self.burnin_masses), end = '')
-#            self.update_mass_posteriors()
-#        self.state = self.initial_state(self.mass_samples)
-        print('\n', end = '')
         for i in range(self.burnin):
             print('\rBURN-IN MF: {0}/{1}'.format(i+1, self.burnin), end = '')
             self.update_mass_posteriors()
