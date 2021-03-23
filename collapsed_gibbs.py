@@ -204,7 +204,7 @@ class CGSampler:
             
         sampler = MF_Sampler(self.mt,
                        self.log_mass_posteriors,
-                       self.posterior_functions_events,
+                       None,
                        self.second_moments,
                        self.burnin_mf,
                        self.n_draws_mf,
