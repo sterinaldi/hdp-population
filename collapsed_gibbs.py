@@ -154,7 +154,7 @@ class CGSampler:
             tasks = self.initialise_samplers(n*self.n_parallel_threads)
             pool = ActorPool(tasks)
             for s in pool.map(lambda a, v: a.run.remote(), range(len(tasks))):
-                self.posterior_functions_events.append(ray.get(s.posterior_functions))
+                self.posterior_functions_events.append(ray.get(s).posterior_functions)
                 i += 1
                 print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
         return
