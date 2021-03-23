@@ -154,7 +154,7 @@ class CGSampler:
             tasks = self.initialise_samplers(n*self.n_parallel_threads)
             pool = ActorPool(tasks)
             for s in pool.map(lambda a, v: a.run.remote(), range(len(tasks))):
-                self.posterior_functions_events.append(s.get_posterior_functions.remote())
+                self.posterior_functions_events.append(s)
                 i += 1
                 print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
         return
@@ -537,8 +537,6 @@ class Sampler_SE:
         if self.autocorrelation:
             self.compute_autocorrelation()
     
-    def get_posterior_functions(self):
-        return self.posterior_functions
     
     def compute_autocorrelation(self):
         dx = (self.m_max_plot - self.m_min)/1000.
@@ -585,7 +583,7 @@ class Sampler_SE:
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
         fig.savefig(self.output_n_clusters+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
-        return
+        return self.posterior_functions
 
 class MF_Sampler():
     # inheriting from actor class is not currently supported
