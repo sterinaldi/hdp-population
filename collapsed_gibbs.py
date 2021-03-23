@@ -204,7 +204,7 @@ class CGSampler:
             
         sampler = MF_Sampler(self.mt,
                        self.log_mass_posteriors,
-                       None,
+                       self.posterior_functions_events,
                        self.second_moments,
                        self.burnin_mf,
                        self.n_draws_mf,
@@ -968,11 +968,9 @@ class MF_Sampler():
         if not self.m_min < M_new < self.m_max:
             return
         # selecting random posterior from pool
-#        random_index = random.randint(0, len(self.posterior_functions_events[e_index]))
-#        p_old = self.posterior_functions_events[e_index][random_index](M_old)
-#        p_new = self.posterior_functions_events[e_index][random_index](M_new)
-        p_old = self.log_mass_posteriors[e_index](M_old)
-        p_new = self.log_mass_posteriors[e_index](M_new)
+        random_index = random.randint(0, len(self.posterior_functions_events[e_index]))
+        p_old = self.posterior_functions_events[e_index][random_index](M_old)
+        p_new = self.posterior_functions_events[e_index][random_index](M_new)
         if p_new - p_old > np.log(random.uniform()):
             self.state['data_'][e_index] = M_new
         self.check_masses[e_index].append(self.mass_samples[e_index])
