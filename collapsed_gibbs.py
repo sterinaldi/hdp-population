@@ -154,7 +154,7 @@ class CGSampler:
             tasks = self.initialise_samplers(n*self.n_parallel_threads)
             pool = ActorPool(tasks)
             for s in pool.map(lambda a, v: a.run.remote(), range(len(tasks))):
-                self.posterior_functions_events.append(ray.get(s).posterior_functions)
+                self.posterior_functions_events.append(s.get_posterior_functions.remote())
                 i += 1
                 print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
         return
@@ -536,6 +536,9 @@ class Sampler_SE:
         fig.savefig(self.output_components +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         if self.autocorrelation:
             self.compute_autocorrelation()
+    
+    def get_posterior_functions(self):
+        return self.posterior_functions
     
     def compute_autocorrelation(self):
         dx = (self.m_max_plot - self.m_min)/1000.
