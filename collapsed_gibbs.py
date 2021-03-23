@@ -967,7 +967,7 @@ class MF_Sampler():
         if not self.m_min < M_new < self.m_max:
             return
         # selecting random posterior from pool
-        random_index = random.randint(0, len(self..posterior_functions_events[e_index]))
+        random_index = random.randint(0, len(self.posterior_functions_events[e_index]))
         p_old = self.posterior_functions_events[e_index][random_index](M_old)
         p_new = self.posterior_functions_events[e_index][random_index](M_new)
         
