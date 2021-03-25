@@ -23,6 +23,7 @@ import pickle
 
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
+Modified (marginalisation)
 """
 
 # natural sorting.
@@ -504,17 +505,15 @@ class Sampler_SE:
         prob = np.array(prob)
         
         ent = []
-        self.posterior_functions = []
         
         for i in range(np.shape(prob)[1]):
             sample = np.exp(prob[:,i])
-            self.posterior_functions.append(interp1d(app, prob[:,i], bounds_error = False, fill_value = -np.inf))
             ent.append(entropy(sample,p[50]))
         mean_ent = np.mean(ent)
         np.savetxt(self.output_entropy + '/KLdiv_{0}.txt'.format(self.e_ID), np.array(ent), header = 'mean entropy = {0}'.format(mean_ent))
         
         picklefile = open(self.output_pickle + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
-        pickle.dump(self.posterior_functions, picklefile)
+        pickle.dump(self.mixture_samples, picklefile)
         picklefile.close()
         
         self.sample_probs = prob
