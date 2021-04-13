@@ -12,7 +12,10 @@ from scipy.stats import entropy
 from scipy.special import logsumexp, betaln, gammaln
 from scipy.interpolate import interp1d
 
+from sample_components_pars import sample_point
+
 from time import perf_counter
+from itertools import product
 
 from numba import jit
 from numba import prange
@@ -24,6 +27,7 @@ import pickle
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
 Modified (marginalisation)
+Interesting answer: https://stats.stackexchange.com/questions/330488/estimate-the-variance-of-gaussian-distribution-from-noisy-sample
 """
 
 # natural sorting.
@@ -594,17 +598,12 @@ class Sampler_SE:
 
 class MF_Sampler():
     # inheriting from actor class is not currently supported
-    def __init__(self, mass_samples,
-                       posterior_functions_events,
-                       second_moments,
+    def __init__(self, posterior_functions_events,
                        burnin,
                        n_draws,
                        step,
                        delta_M = 1,
                        alpha0 = 1,
-                       b = 5,
-                       a = 3,
-                       V = 1/4.,
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
@@ -620,7 +619,6 @@ class MF_Sampler():
                        autocorrelation = False
                        ):
                        
-        self.mass_samples  = mass_samples
         self.burnin  = burnin
         self.n_draws = n_draws
         self.step    = step
@@ -630,108 +628,88 @@ class MF_Sampler():
         self.m_max   = m_max
         self.sigma_max = sigma_max
         self.posterior_functions_events = posterior_functions_events
-        self.second_moments = second_moments
-        self.mean_sigma = np.sqrt(np.mean(self.second_moments))
         self.delta_M = delta_M
         self.m_max_plot = m_max_plot
         # DP parameters
         self.alpha0 = alpha0
-        # Student-t parameters
-        self.b  = a*(b**2)
-        self.a  = a
-        self.V  = V
-        self.mu = np.mean(mass_samples)
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
-        self.SuffStat = namedtuple('SuffStat', 'mean var sm N')
         # Output
         self.output_folder = output_folder
         self.mixture_samples = []
         self.n_clusters = []
-        self.saved_masses = []
         self.verbose = verbose
         self.injected_density = injected_density
         self.true_masses = true_masses
         self.diagnostic = diagnostic
         self.autocorrelation = autocorrelation
         
-    def initial_state(self, samples):
-        assign = [a%int(self.icn) for a in range(len(samples))]
+    def initial_state(self):
+        assign = [a%int(self.icn) for a in range(len(self.posterior_functions_events))]
         cluster_ids = list(np.arange(int(np.max(assign)+1)))
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
-            'hyperparameters_': {
-                "b": self.b,
-                "a": self.a,
-                "V": self.V,
-                "mu": self.mu
-                },
-            'suffstats': {cid: None for cid in cluster_ids},
             'assignment': assign,
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
+            'ev_in_cl': {cid: list(np.where(np.array(assign) == cid)[0]) for cid in cluster_ids}
             }
-        self.update_suffstats(state)
         return state
     
-    def update_suffstats(self, state):
-        for cluster_id, N in Counter(state['assignment']).items():
-            points_in_cluster = [x for x, cid in zip(state['data_'], state['assignment']) if cid == cluster_id]
-            mean = np.array(points_in_cluster).mean()
-            var  = np.array(points_in_cluster).var()
-            sm   = np.array([x for x, cid in zip(self.second_moments, state['assignment']) if cid == cluster_id]).mean()
-            M    = len(points_in_cluster)
-            state['suffstats'][cluster_id] = self.SuffStat(mean, var, sm, M)
-    
     def log_predictive_likelihood(self, data_id, cluster_id, state):
-        
+        #ricordati di aggiungere l'evento considerato!
         if cluster_id == "new":
-            ss = self.SuffStat(0,0,0,0)
+            events = []
         else:
-            ss  = state['suffstats'][cluster_id]
-            
-        x = state['data_'][data_id]
-        mean = ss.mean
-        sigma = ss.var
-        N     = ss.N
-        # Update hyperparameters
-        V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-        mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-        b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
-        a_n  = state['hyperparameters_']["a"] + N/2.
-        # Update t-parameters
-        t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
-        t_sigma = min([t_sigma, self.sigma_max])
-        t_x     = (x - mu_n)/t_sigma
-        # Compute logLikelihood
-        logL = my_student_t(df = 2*a_n, t = t_x)
-        return logL
+            events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
+        logL_N = -np.inf #numeratore
+        logL_D = -np.inf #denominatore
+        n_comp = [np.range(len(ev)) for ev in events]
+        combinations = list(product(*n_comp))
+        for comb in combinations:
+            components = [post[i] for post, i in zip(events, comb)]
+            integral = self.integrate_predictive(components)
+            logL_D = logsumexp([logL_D, integral])
+        events.append(data_id)
+        n_comp = [np.range(len(ev)) for ev in events]
+        combinations = list(product(*n_comp))
+        for comb in combinations:
+            components = [post[i] for post, i in zip(events, comb)]
+            integral = self.integrate_predictive(components)
+            logL_N = logsumexp([logL_N, integral])
+        return logL_N - logL_D
 
-    def add_datapoint_to_suffstats(self, x, second_moment, ss):
-        mean = (ss.mean*(ss.N)+x)/(ss.N+1)
-        var  = (ss.N*(ss.var + ss.mean**2) + x**2)/(ss.N+1) - mean**2
-        sm   = (ss.sm*ss.N+second_moment)/(ss.N+1)
-        return self.SuffStat(mean, var, sm, ss.N+1)
+    def integrate_predictive(self, components):
+        I = -np.inf
+        sigmas = np.linspace(0.1, self.sigma_max, 1000)
+        ds = np.log(sigmas[1]-sigmas[0])
+        mean_mu = 0
+        mean_sigma = 0
+        if not len(events) == 0:
+            mean_mu = np.mean([component['mu'] for component in components])
+            mean_sigma = np.mean([component['sigma'] for component in components])
+        for s in sigmas:
+            I = logsumexp([I, self.log_semianalytical_integrand(s, mean_mu, mean_sigma, events) + ds])
+        return I
 
+    def log_semianalytical_integrand(self, sigma, mean_mu, mean_sigma, components):
+        n = len(components)
+        exponent = np.sum([-((mean_mu - component['mu'])**2)/(2*(sigma**2 + component['sigma']**2)) for component in components])
+        denom    = np.sum([-0.5*np.log(sigma**2 + component['sigma']**2) for ev in events for component in ev])
+        weights  = np.sum([np.log(component['w']) for component in components])
+        return weights - 0.5*(n-1)*np.log(2*np.pi) + exponent + denom + 0.5*np.log(sigma**2 + mean_sigma**2)
+        
 
-    def remove_datapoint_from_suffstats(self, x, second_moment, ss):
-        if ss.N == 1:
-            return(self.SuffStat(0,0,0,0))
-        mean = (ss.mean*(ss.N)-x)/(ss.N-1)
-        var  = (ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1) - mean**2
-        sm   = (ss.sm*ss.N-second_moment)/(ss.N-1)
-        return self.SuffStat(mean, var, sm, ss.N-1)
-    
     def cluster_assignment_distribution(self, data_id, state):
         """
         Compute the marginal distribution of cluster assignment
         for each cluster.
         """
         scores = {}
-        cluster_ids = list(state['suffstats'].keys()) + ['new']
+        cluster_ids = list(state['ev_in_cl'].keys()) + ['new']
         for cid in cluster_ids:
             scores[cid] = self.log_predictive_likelihood(data_id, cid, state)
             scores[cid] += self.log_cluster_assign_score(cid, state)
@@ -747,12 +725,11 @@ class MF_Sampler():
         if cluster_id == "new":
             return np.log(state["alpha_"])
         else:
-            return np.log(state['suffstats'][cluster_id].N)
+            return np.log(len(state['ev_in_cl'][cluster_id]))
 
     def create_cluster(self, state):
         state["num_clusters_"] += 1
-        cluster_id = max(state['suffstats'].keys()) + 1
-        state['suffstats'][cluster_id] = self.SuffStat(0, 0, 0, 0)
+        cluster_id = max(state['cluster_ids_']) + 1
         state['cluster_ids_'].append(cluster_id)
         return cluster_id
 
@@ -763,7 +740,7 @@ class MF_Sampler():
         
     def prune_clusters(self,state):
         for cid in state['cluster_ids_']:
-            if state['suffstats'][cid].N == 0:
+            if len(state['ev_in_cl'][cid]) == 0:
                 self.destroy_cluster(state, cid)
 
     def sample_assignment(self, data_id, state):
@@ -779,41 +756,41 @@ class MF_Sampler():
         else:
             return int(cid)
 
+    def update_draws(self):
+        draws = []
+        for posterior_samples in self.posterior_functions_events:
+            draws.append(posterior_samples[randint(len(posterior_samples))])
+        self.posterior_draws = draws
+    
+    def drop_from_cluster(self, state, data_id, cid):
+        state['ev_in_cl'][cid].remove(data_id)
+
+    def add_to_cluster(self, state, data_id, cid):
+        state['ev_in_cl'][cid].append(data_id)
+
     def gibbs_step(self, state):
         """
         Collapsed Gibbs sampler for Dirichlet Process Mixture Model
         """
-        triplets = zip(state['data_'], self.second_moments, state['assignment'])
-        for data_id, (datapoint, sm, cid) in enumerate(triplets):
+        self.update_draws()
+        pairs = zip(state['data_'], state['assignment'])
+        for data_id, (datapoint, cid) in enumerate(pairs):
             # print(cid)
-            state['suffstats'][cid] = self.remove_datapoint_from_suffstats(datapoint, sm, state['suffstats'][cid])
+            self.drop_from_cluster(state, data_id, cid)
             self.prune_clusters(state)
-            for _ in range(self.burnin_masses):
-                self.update_single_posterior(data_id)
             cid = self.sample_assignment(data_id, state)
+            self.add_to_cluster(state, data_id, cid)
             state['assignment'][data_id] = cid
-            state['suffstats'][cid] = self.add_datapoint_to_suffstats(state['data_'][data_id], sm, state['suffstats'][cid])
         self.n_clusters.append(len(state['cluster_ids_']))
     
     def sample_mixture_parameters(self, state):
-        ss = state['suffstats']
-        alpha = [ss[cid].N + state['alpha_'] / state['num_clusters_'] for cid in state['cluster_ids_']]
+        alpha = [len(state['ev_in_cl'][cid]) + state['alpha_'] / state['num_clusters_'] for cid in state['cluster_ids_']]
         weights = stats.dirichlet(alpha).rvs(size=1).flatten()
         components = {}
         for i, cid in enumerate(state['cluster_ids_']):
-            mean = ss[cid].mean
-            sigma = ss[cid].var# - ss[cid].sm
-#            if sigma < 0.001:
-#                sigma = 0.001
-            N     = ss[cid].N
-            V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-            mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-            b_n  =  state['hyperparameters_']["b"] + (N*sigma + (N*V_n*(state['hyperparameters_']["mu"]-mean)**2)/state['hyperparameters_']["V"])*0.5
-            a_n  = state['hyperparameters_']["a"] + N/2.
-#           Update t-parameters
-            s = stats.invgamma(a_n, scale = b_n).rvs()
-            m = stats.norm(mu_n, s*V_n).rvs()
-            components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
+            events = [self.posterior_draws[j] for j in state['ev_in_cl'][cid]]
+            m, s = sample_point(events, self.m_min, self.m_max, 0.1, self.sigma_max, 1000)
+            components[i] = {'mean': m, 'sigma': s, 'weight': weights[i]}
         self.mixture_samples.append(components)
         self.saved_masses.append(state['data_'])
     
@@ -944,49 +921,21 @@ class MF_Sampler():
         return
 
 
-    def update_mass_posteriors(self):
-        # Parallelizzabile
-        for _ in range(self.step_masses):
-            for index in prange(len(self.log_mass_posteriors)):
-                self.update_single_posterior(index)
-        self.state['data_'] = self.mass_samples
-    
-    def update_single_posterior(self, e_index):
-        M_old = self.state['data_'][e_index]
-        M_new = draw_mass(M_old, self.delta_M[e_index])
-        if not self.m_min < M_new < self.m_max:
-            return
-        # selecting random posterior from pool
-        random_index = random.randint(0, len(self.posterior_functions_events[e_index]))
-        p_old = self.posterior_functions_events[e_index][random_index](M_old)
-        p_new = self.posterior_functions_events[e_index][random_index](M_new)
-        if p_new - p_old > np.log(random.uniform()):
-            self.state['data_'][e_index] = M_new
-        self.check_masses[e_index].append(self.mass_samples[e_index])
-        return
-    
     def run_sampling(self):
         self.check_masses = [[] for _ in range(len(self.mass_samples))]
-        self.state = self.initial_state(self.mass_samples)
+        self.state = self.initial_state()
         for i in range(self.burnin):
             print('\rBURN-IN MF: {0}/{1}'.format(i+1, self.burnin), end = '')
-            self.update_mass_posteriors()
-            self.update_suffstats(self.state)
             self.gibbs_step(self.state)
         print('\n', end = '')
         for i in range(self.n_draws):
             print('\rSAMPLING MF: {0}/{1}'.format(i+1, self.n_draws), end = '')
             for _ in range(self.step):
-                self.update_mass_posteriors()
-                self.update_suffstats(self.state)
                 self.gibbs_step(self.state)
             self.sample_mixture_parameters(self.state)
         print('\n', end = '')
         return
         
-@jit()
-def draw_mass(Mold, delta_M):
-    return Mold + delta_M * random.uniform(-1,1)
 
 
 def log_normal_density(x, x0, sigma):
