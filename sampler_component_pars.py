@@ -4,7 +4,7 @@ from scipy.special import logsumexp
 from numpy.random import uniform
 
 def log_norm(x, x0, sigma1, sigma2):
-    return -((x-x0)**2 + sigma2**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
+    return -((x-x0)**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
 
 def posterior(mu, sigma, events, sigma_max, m_min, m_max):
     if not (0 < sigma < sigma_max and m_min < mu < m_max):
