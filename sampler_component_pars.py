@@ -17,7 +17,7 @@ def propose_point(old_point, dm, ds):
     s = old_point[1] + uniform(-1,1)*ds
     return [m,s]
 
-def sample_point(events, m_min, m_max, s_min, s_max, burnin, dm = 3, ds = 1)
+def sample_point(events, m_min, m_max, s_min, s_max, burnin = 1000, dm = 3, ds = 1):
     old_point = [uniform(m_min, m_max), uniform(s_min, s_max)]
     for _ in range(burnin):
         new_point = propose_point(old_point, dm, ds)
