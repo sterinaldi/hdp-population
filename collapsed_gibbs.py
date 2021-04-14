@@ -691,6 +691,8 @@ class MF_Sampler():
         if cluster_id == "new":
             return np.log(state["alpha_"])
         else:
+            if len(state['ev_in_cl'][cluster_id]) == 0:
+                return -np.inf
             return np.log(len(state['ev_in_cl'][cluster_id]))
 
     def create_cluster(self, state):
