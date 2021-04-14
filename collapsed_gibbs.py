@@ -5,14 +5,16 @@ import re
 import warnings
 
 from collections import namedtuple, Counter
-from scipy import stats
 from numpy import random
+
+from scipy import stats
 from scipy.stats import t as student_t
 from scipy.stats import entropy
 from scipy.special import logsumexp, betaln, gammaln
 from scipy.interpolate import interp1d
+from scipy.integrate import dblquad
 
-from sample_components_pars import sample_point
+from sampler_component_pars import sample_point
 
 from time import perf_counter
 from itertools import product
@@ -203,32 +205,25 @@ class CGSampler:
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
-        self.mt, self.posterior_functions_events = sort_matrix([self.mt, self.posterior_functions_events], axis = 0)
-        self.compute_moments()
+        # self.mt, self.posterior_functions_events = sort_matrix([self.mt, self.posterior_functions_events], axis = 0)
+        # self.compute_moments()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
             
-        sampler = MF_Sampler(self.mt,
-                       self.posterior_functions_events,
-                       self.second_moments,
+        sampler = MF_Sampler(self.posterior_functions_events,
                        self.burnin_mf,
                        self.n_draws_mf,
                        self.step_mf,
                        delta_M = self.delta_M,
                        alpha0 = self.gamma0,
-                       b = self.b_mf,
-                       a = self.a_mf,
-                       V = self.V_mf,
                        m_min = self.m_min,
                        m_max = self.m_max,
                        verbose = self.verbose,
                        output_folder = self.mf_folder,
-                       initial_cluster_number = min([self.icn, len(self.mt)]),
+                       initial_cluster_number = min([self.icn, len(self.posterior_functions_events)]),
                        injected_density = self.injected_density,
                        true_masses = self.true_masses,
-                       burnin_masses = self.burnin_masses,
-                       step_masses = self.step_masses,
                        diagnostic = self.diagnostic,
                        sigma_max = self.sigma_max,
                        m_max_plot = self.m_max_plot,
@@ -285,7 +280,10 @@ class Sampler_SE:
         self.step    = step
         self.m_min   = m_min
         self.m_max   = m_max
-        self.sigma_max = sigma_max
+        if sigma_max < (max(mass_samples) - min(mass_samples))/3.:
+            self.sigma_max = sigma_max
+        else:
+            self.sigma_max = (max(mass_samples) - min(mass_samples))/3.
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
@@ -611,8 +609,6 @@ class MF_Sampler():
                        initial_cluster_number = 5.,
                        injected_density = None,
                        true_masses = None,
-                       burnin_masses = 0,
-                       step_masses = 1,
                        diagnostic = False,
                        sigma_max = 5,
                        m_max_plot = 50,
@@ -622,8 +618,6 @@ class MF_Sampler():
         self.burnin  = burnin
         self.n_draws = n_draws
         self.step    = step
-        self.burnin_masses = burnin_masses
-        self.step_masses = step_masses
         self.m_min   = m_min
         self.m_max   = m_max
         self.sigma_max = sigma_max
@@ -646,11 +640,12 @@ class MF_Sampler():
         self.autocorrelation = autocorrelation
         
     def initial_state(self):
+        self.update_draws()
         assign = [a%int(self.icn) for a in range(len(self.posterior_functions_events))]
         cluster_ids = list(np.arange(int(np.max(assign)+1)))
         state = {
             'cluster_ids_': cluster_ids,
-            'data_': samples,
+            'data_': self.posterior_draws,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
             'assignment': assign,
@@ -660,48 +655,19 @@ class MF_Sampler():
         return state
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
-        #ricordati di aggiungere l'evento considerato!
         if cluster_id == "new":
             events = []
         else:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
-        logL_N = -np.inf #numeratore
-        logL_D = -np.inf #denominatore
-        n_comp = [np.range(len(ev)) for ev in events]
-        combinations = list(product(*n_comp))
-        for comb in combinations:
-            components = [post[i] for post, i in zip(events, comb)]
-            integral = self.integrate_predictive(components)
-            logL_D = logsumexp([logL_D, integral])
-        events.append(data_id)
-        n_comp = [np.range(len(ev)) for ev in events]
-        combinations = list(product(*n_comp))
-        for comb in combinations:
-            components = [post[i] for post, i in zip(events, comb)]
-            integral = self.integrate_predictive(components)
-            logL_N = logsumexp([logL_N, integral])
+        logL_D = self.log_numerical_predictive(events) #denominator
+        events.append(self.posterior_draws[data_id])
+        logL_N = self.log_numerical_predictive(events) #numerator
         return logL_N - logL_D
 
-    def integrate_predictive(self, components):
-        I = -np.inf
-        sigmas = np.linspace(0.1, self.sigma_max, 1000)
-        ds = np.log(sigmas[1]-sigmas[0])
-        mean_mu = 0
-        mean_sigma = 0
-        if not len(events) == 0:
-            mean_mu = np.mean([component['mu'] for component in components])
-            mean_sigma = np.mean([component['sigma'] for component in components])
-        for s in sigmas:
-            I = logsumexp([I, self.log_semianalytical_integrand(s, mean_mu, mean_sigma, events) + ds])
+    def log_numerical_predictive(self, events):
+        integrand = lambda sigma, mu : np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma']) for component in ev.values()]) for ev in events])) + np.log(self.sigma_max - 0.1) + np.log(self.m_max-self.m_min)
+        I, dI = dblquad(integrand, self.m_min, self.m_max, gfun = lambda x: 0.1, hfun = lambda x: self.sigma_max)
         return I
-
-    def log_semianalytical_integrand(self, sigma, mean_mu, mean_sigma, components):
-        n = len(components)
-        exponent = np.sum([-((mean_mu - component['mu'])**2)/(2*(sigma**2 + component['sigma']**2)) for component in components])
-        denom    = np.sum([-0.5*np.log(sigma**2 + component['sigma']**2) for ev in events for component in ev])
-        weights  = np.sum([np.log(component['w']) for component in components])
-        return weights - 0.5*(n-1)*np.log(2*np.pi) + exponent + denom + 0.5*np.log(sigma**2 + mean_sigma**2)
-        
 
     def cluster_assignment_distribution(self, data_id, state):
         """
@@ -731,11 +697,11 @@ class MF_Sampler():
         state["num_clusters_"] += 1
         cluster_id = max(state['cluster_ids_']) + 1
         state['cluster_ids_'].append(cluster_id)
+        state['ev_in_cl'][cluster_id] = []
         return cluster_id
 
     def destroy_cluster(self, state, cluster_id):
         state["num_clusters_"] -= 1
-        del state['suffstats'][cluster_id]
         state['cluster_ids_'].remove(cluster_id)
         
     def prune_clusters(self,state):
@@ -759,7 +725,7 @@ class MF_Sampler():
     def update_draws(self):
         draws = []
         for posterior_samples in self.posterior_functions_events:
-            draws.append(posterior_samples[randint(len(posterior_samples))])
+            draws.append(posterior_samples[random.randint(len(posterior_samples))])
         self.posterior_draws = draws
     
     def drop_from_cluster(self, state, data_id, cid):
@@ -775,7 +741,6 @@ class MF_Sampler():
         self.update_draws()
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
-            # print(cid)
             self.drop_from_cluster(state, data_id, cid)
             self.prune_clusters(state)
             cid = self.sample_assignment(data_id, state)
@@ -792,7 +757,6 @@ class MF_Sampler():
             m, s = sample_point(events, self.m_min, self.m_max, 0.1, self.sigma_max, 1000)
             components[i] = {'mean': m, 'sigma': s, 'weight': weights[i]}
         self.mixture_samples.append(components)
-        self.saved_masses.append(state['data_'])
     
     
     def display_config(self):
@@ -922,7 +886,6 @@ class MF_Sampler():
 
 
     def run_sampling(self):
-        self.check_masses = [[] for _ in range(len(self.mass_samples))]
         self.state = self.initial_state()
         for i in range(self.burnin):
             print('\rBURN-IN MF: {0}/{1}'.format(i+1, self.burnin), end = '')
@@ -952,3 +915,5 @@ def log_normal_density(x, x0, sigma):
     """
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
 
+def log_norm(x, x0, sigma1, sigma2):
+    return -((x-x0)**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
