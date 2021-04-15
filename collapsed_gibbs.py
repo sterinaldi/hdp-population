@@ -187,25 +187,8 @@ class CGSampler:
         print('------------------------')
         return
     
-    def initialise_mt_samples(self):
-        self.mt = [np.random.choice(a) for a in self.events]
-    
-    def compute_moments(self):
-        print('Computing moments...')
-        x  = np.linspace(self.m_min, self.m_max, 1000)
-        dx = x[1]-x[0]
-        
-        self.second_moments = []
-        
-        for posterior in self.log_mass_posteriors:
-            fm = (np.sum(np.exp(posterior(x))*x*dx))
-            self.second_moments.append(np.sum(np.exp(posterior(x))*(x-fm)**2*dx))
-
-    
     def run_mass_function_sampling(self):
         self.load_mixtures()
-        self.initialise_mt_samples()
-        # self.compute_moments()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
@@ -305,7 +288,6 @@ class Sampler_SE:
         assign = [a%int(self.icn) for a in range(len(samples))]
         cluster_ids = list(np.arange(int(np.max(assign)+1)))
         samp = np.copy(samples)
-#        np.random.shuffle(samp)
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samp,
@@ -665,7 +647,7 @@ class MF_Sampler():
 
     def log_numerical_predictive(self, events):
         n = len(events)
-        integrand = lambda sigma, mu : np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma']) for component in ev.values()]) for ev in events]))# - np.log(self.sigma_max - 0.1) + np.log(self.m_max-self.m_min))
+        integrand = lambda sigma, mu : np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma']) for component in ev.values()]) for ev in events]))
         I, dI = dblquad(integrand, self.m_min, self.m_max, gfun = lambda x: 0.1, hfun = lambda x: self.sigma_max)
         return np.log(I)
 
@@ -676,6 +658,19 @@ class MF_Sampler():
         """
         scores = {}
         cluster_ids = list(state['ev_in_cl'].keys()) + ['new']
+        '''
+        for n in range(int(len(self.events)/self.n_parallel_threads)+1):
+            tasks = self.initialise_samplers(n*self.n_parallel_threads)
+            pool = ActorPool(tasks)
+            for s in pool.map(lambda a, v: a.run.remote(), range(len(tasks))):
+                self.posterior_functions_events.append(s)
+                i += 1
+                print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
+        '''
+        '''
+        for n in range(int(len(cluster_ids)/self.n_parallel_threads)+1):
+            
+        '''
         for cid in cluster_ids:
             scores[cid] = self.log_predictive_likelihood(data_id, cid, state)
             scores[cid] += self.log_cluster_assign_score(cid, state)
