@@ -15,6 +15,7 @@ from scipy.interpolate import interp1d
 from scipy.integrate import dblquad
 
 from sampler_component_pars import sample_point
+from predictive import log_numerical_predictive
 
 from time import perf_counter
 from itertools import product
@@ -644,16 +645,16 @@ class MF_Sampler():
             events = []
         else:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
-        logL_D = self.log_numerical_predictive(events) #denominator
+        logL_D = log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max) #denominator
         events.append(self.posterior_draws[data_id])
-        logL_N = self.log_numerical_predictive(events) #numerator
+        logL_N = log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max) #numerator
         return logL_N - logL_D
 
-    def log_numerical_predictive(self, events):
-        n = len(events)
-        integrand = lambda sigma, mu : np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma']) for component in ev.values()]) for ev in events]))
-        I, dI = dblquad(integrand, self.m_min, self.m_max, gfun = lambda x: 0.1, hfun = lambda x: self.sigma_max)
-        return np.log(I)
+#    def log_numerical_predictive(self, events):
+#        n = len(events)
+#        integrand = lambda sigma, mu : np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma']) for component in ev.values()]) for ev in events]))
+#        I, dI = dblquad(integrand, self.m_min, self.m_max, gfun = lambda x: 0.1, hfun = lambda x: self.sigma_max)
+#        return np.log(I)
 
     def cluster_assignment_distribution(self, data_id, state):
         """
