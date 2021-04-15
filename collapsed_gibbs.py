@@ -205,7 +205,6 @@ class CGSampler:
     def run_mass_function_sampling(self):
         self.load_mixtures()
         self.initialise_mt_samples()
-        # self.mt, self.posterior_functions_events = sort_matrix([self.mt, self.posterior_functions_events], axis = 0)
         # self.compute_moments()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
@@ -641,7 +640,7 @@ class MF_Sampler():
         
     def initial_state(self):
         self.update_draws()
-        assign = [a%int(self.icn) for a in range(len(self.posterior_functions_events))]
+        assign = [int(a//(len(self.posterior_functions_events)/int(self.icn))) for a in range(len(self.posterior_functions_events))]
         cluster_ids = list(np.arange(int(np.max(assign)+1)))
         state = {
             'cluster_ids_': cluster_ids,
@@ -665,9 +664,10 @@ class MF_Sampler():
         return logL_N - logL_D
 
     def log_numerical_predictive(self, events):
-        integrand = lambda sigma, mu : np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma']) for component in ev.values()]) for ev in events])) + np.log(self.sigma_max - 0.1) + np.log(self.m_max-self.m_min)
+        n = len(events)
+        integrand = lambda sigma, mu : np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma']) for component in ev.values()]) for ev in events]))# - np.log(self.sigma_max - 0.1) + np.log(self.m_max-self.m_min))
         I, dI = dblquad(integrand, self.m_min, self.m_max, gfun = lambda x: 0.1, hfun = lambda x: self.sigma_max)
-        return I
+        return np.log(I)
 
     def cluster_assignment_distribution(self, data_id, state):
         """
@@ -756,7 +756,7 @@ class MF_Sampler():
         components = {}
         for i, cid in enumerate(state['cluster_ids_']):
             events = [self.posterior_draws[j] for j in state['ev_in_cl'][cid]]
-            m, s = sample_point(events, self.m_min, self.m_max, 0.1, self.sigma_max, 1000)
+            m, s = sample_point(events, self.m_min, self.m_max, 0.1, self.sigma_max, burnin = 1000)
             components[i] = {'mean': m, 'sigma': s, 'weight': weights[i]}
         self.mixture_samples.append(components)
     
