@@ -23,6 +23,7 @@ from numba import jit
 from numba import prange
 import ray
 from ray.util import ActorPool
+from multiprocessing import Pool
 import pickle
 
 
@@ -204,12 +205,13 @@ class CGSampler:
                        verbose = self.verbose,
                        output_folder = self.mf_folder,
                        initial_cluster_number = min([self.icn, len(self.posterior_functions_events)]),
-                       injected_density = self.injected_density,
+                       #injected_density = self.injected_density,
                        true_masses = self.true_masses,
                        diagnostic = self.diagnostic,
                        sigma_max = self.sigma_max,
                        m_max_plot = self.m_max_plot,
-                       autocorrelation = self.autocorrelation
+                       autocorrelation = self.autocorrelation,
+                       n_parallel_threads = self.n_parallel_threads
                        )
         
         sampler.run()
@@ -593,7 +595,8 @@ class MF_Sampler():
                        diagnostic = False,
                        sigma_max = 5,
                        m_max_plot = 50,
-                       autocorrelation = False
+                       autocorrelation = False,
+                       n_parallel_threads = 1
                        ):
                        
         self.burnin  = burnin
@@ -619,6 +622,7 @@ class MF_Sampler():
         self.true_masses = true_masses
         self.diagnostic = diagnostic
         self.autocorrelation = autocorrelation
+        self.n_parallel_threads = n_parallel_threads
         
     def initial_state(self):
         self.update_draws()
@@ -656,29 +660,23 @@ class MF_Sampler():
         Compute the marginal distribution of cluster assignment
         for each cluster.
         """
-        scores = {}
         cluster_ids = list(state['ev_in_cl'].keys()) + ['new']
-        '''
-        for n in range(int(len(self.events)/self.n_parallel_threads)+1):
-            tasks = self.initialise_samplers(n*self.n_parallel_threads)
-            pool = ActorPool(tasks)
-            for s in pool.map(lambda a, v: a.run.remote(), range(len(tasks))):
-                self.posterior_functions_events.append(s)
-                i += 1
-                print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
-        '''
-        '''
-        for n in range(int(len(cluster_ids)/self.n_parallel_threads)+1):
-            
-        '''
-        for cid in cluster_ids:
-            scores[cid] = self.log_predictive_likelihood(data_id, cid, state)
-            scores[cid] += self.log_cluster_assign_score(cid, state)
-        scores = {cid: np.exp(score) for cid, score in scores.items()}
+        with Pool(self.n_parallel_threads) as p:
+            output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
+        scores = {out[0]: out[1] for out in output}
         normalization = 1/sum(scores.values())
         scores = {cid: score*normalization for cid, score in scores.items()}
         return scores
-
+        
+    def compute_score(self, args):
+        data_id = args[0]
+        cid     = args[1]
+        state   = args[2]
+        score = self.log_predictive_likelihood(data_id, cid, state)
+        score += self.log_cluster_assign_score(cid, state)
+        score = np.exp(score)
+        return [cid, score]
+        
     def log_cluster_assign_score(self, cluster_id, state):
         """Log-likelihood that a new point generated will
         be assigned to cluster_id given the current state.
