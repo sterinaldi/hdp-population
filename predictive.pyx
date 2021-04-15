@@ -6,11 +6,12 @@ cimport cython
 from scipy.integrate import dblquad
 from scipy.special import logsumexp
 
+
 def log_numerical_predictive(events, m_min, m_max, sigma_min, sigma_max):
-    events_array = np.empty(len(events))
+    events_array = np.empty(len(events), dtype = object)
     for i in range(len(events)):
         ev = events[i]
-        components_array = np.empty(len(ev))
+        components_array = np.empty(len(ev), dtype = object)
         for j in range(len(ev)):
             components_array[j] = np.array([ev[j]['mean'], ev[j]['sigma'], ev[j]['weight']])
         events_array[i] = components_array
@@ -19,7 +20,7 @@ def log_numerical_predictive(events, m_min, m_max, sigma_min, sigma_max):
 
 cdef _log_numerical_predictive(np.ndarray events, double m_min, double m_max, double sigma_min, double sigma_max):
     cdef double I, dI
-    cdef double integrand = lambda sigma, mu : integrand_function(mu, sigma, events)
+    integrand = lambda sigma, mu : integrand_function(mu, sigma, events)
     I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max)
     return np.log(I)
 
