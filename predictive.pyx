@@ -1,6 +1,7 @@
 import numpy as np
 cimport numpy as np
 from numpy cimport ndarray
+from libc.math cimport INFINITY
 cimport cython
 from scipy.integrate import dblquad
 from scipy.special import logsumexp
