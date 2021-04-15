@@ -206,7 +206,7 @@ class CGSampler:
                        verbose = self.verbose,
                        output_folder = self.mf_folder,
                        initial_cluster_number = min([self.icn, len(self.posterior_functions_events)]),
-                       #injected_density = self.injected_density,
+                       injected_density = self.injected_density,
                        true_masses = self.true_masses,
                        diagnostic = self.diagnostic,
                        sigma_max = self.sigma_max,
@@ -662,9 +662,13 @@ class MF_Sampler():
         for each cluster.
         """
         cluster_ids = list(state['ev_in_cl'].keys()) + ['new']
+        # can't pickle injected density
+        saved_injected_density = self.injected_density
+        self.injected_density  = None
         with Pool(self.n_parallel_threads) as p:
             output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
         scores = {out[0]: out[1] for out in output}
+        self.injected_density = saved_injected_density
         normalization = 1/sum(scores.values())
         scores = {cid: score*normalization for cid, score in scores.items()}
         return scores
