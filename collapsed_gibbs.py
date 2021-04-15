@@ -665,6 +665,8 @@ class MF_Sampler():
         # can't pickle injected density
         saved_injected_density = self.injected_density
         self.injected_density  = None
+        print(saved_injected_density)
+        exit()
         with Pool(self.n_parallel_threads) as p:
             output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
         scores = {out[0]: out[1] for out in output}
