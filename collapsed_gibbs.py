@@ -20,7 +20,7 @@ from sampler_component_pars import sample_point
 from time import perf_counter
 from itertools import product
 
-from numba import jit
+from numba import jit, njit
 from numba import prange
 import ray
 from ray.util import ActorPool
@@ -645,16 +645,16 @@ class MF_Sampler():
             events = []
         else:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
-        logL_D = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max) #denominator
+        n = len(events)
+        logL_D = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n) #denominator
         events.append(self.posterior_draws[data_id])
-        logL_N = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max) #numerator
+        logL_N = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n+1) #numerator
         return logL_N - logL_D
 
-    def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max):
-        integrand = lambda sigma, mu : np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma']) for component in ev.values()]) for ev in events]))
-        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max)
+    def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
+        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [events, m_min, m_max, sigma_min, sigma_max, n])
         return np.log(I)
-
+    
     def cluster_assignment_distribution(self, data_id, state):
         """
         Compute the marginal distribution of cluster assignment
@@ -740,6 +740,7 @@ class MF_Sampler():
         self.update_draws()
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
+            print(data_id)
             self.drop_from_cluster(state, data_id, cid)
             self.prune_clusters(state)
             cid = self.sample_assignment(data_id, state)
@@ -916,3 +917,7 @@ def log_normal_density(x, x0, sigma):
 
 def log_norm(x, x0, sigma1, sigma2):
     return -((x-x0)**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
+
+
+def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
+    return np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()]) for ev in events]) + np.log(m_max - m_min) - (n-1)*np.log(sigma_max-sigma_min))
