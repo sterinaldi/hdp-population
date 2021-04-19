@@ -677,6 +677,7 @@ class MF_Sampler():
         cid     = args[1]
         state   = args[2]
         score = self.log_predictive_likelihood(data_id, cid, state)
+        print(score)
         score += self.log_cluster_assign_score(cid, state)
         score = np.exp(score)
         return [cid, score]
