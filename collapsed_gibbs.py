@@ -133,6 +133,7 @@ class CGSampler:
             self.names = [str(i+1) for i in range(len(self.events))]
         self.autocorrelation = autocorrelation
         self.autocorrelation_ev = autocorrelation_ev
+        ray.init(ignore_reinit_error=True, log_to_driver=False)
         
     def initialise_samplers(self, marker):
         event_samplers = []
@@ -190,6 +191,7 @@ class CGSampler:
         return
     
     def run_mass_function_sampling(self):
+        ray.shutdown()
         self.load_mixtures()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
@@ -231,7 +233,6 @@ class CGSampler:
         print('Elapsed time: {0}h {1}m {2}s'.format(h, m, s))
         return
         
-ray.init(ignore_reinit_error=True, log_to_driver=False)
 
 @jit(forceobj=True)
 def my_student_t(df, t):
