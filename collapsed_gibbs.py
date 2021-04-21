@@ -35,7 +35,7 @@ class CGSampler:
                        m_min = 5,
                        m_max = 60,
                        output_folder = './',
-                       initial_cluster_number = 10,
+                       initial_cluster_number = 5,
                        min_cluster_occupation = 10
                        ):
         
@@ -92,8 +92,10 @@ ray.init(ignore_reinit_error=True)
 http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
 """
 @jit()
-def my_student_t(df, t, mu, sigma, dim, s2max = np.ones(len(t))*25):
+def my_student_t(df, t, mu, sigma, dim, s2max = None):
 
+    if s2max is None:
+        s2max = np.ones(len(t))*1
     vals, vecs = np.linalg.eigh(sigma)
     vals       = np.minimum(vals, s2max)
     logdet     = np.log(vals).sum()
@@ -393,7 +395,13 @@ class Sampler_SE:
 #        ax.set_ylabel('$p(M)$')
         if self.dim == 2:
             ax  = fig.add_subplot(111)
-            ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.last_state['assignment'], marker = '.')
+            clusters = [x if not np.count_nonzero(self.last_state['assignment'] == x) == 1 else -1 for x in self.last_state['assignment']]
+            print(clusters)
+            field_x = [x for x, c in zip(self.mass_samples[:,0], clusters) if c == -1]
+            field_y = [x for x, c in zip(self.mass_samples[:,1], clusters) if c == -1]
+            ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = clusters, marker = '.')
+            ax.scatter(field_x, field_y, c = 'r', marker = '.')
+            
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         elif self.dim == 3:
             ax  = fig.add_subplot(111, projection = '3d')
