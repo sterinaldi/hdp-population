@@ -933,7 +933,7 @@ def log_normal_density(x, x0, sigma):
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
 
 def log_norm(x, x0, sigma1, sigma2):
-    return -((x-x0)**2 + sigma2**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
+    return -((x-x0)**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
 
 
 def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
