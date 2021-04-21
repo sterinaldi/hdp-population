@@ -97,7 +97,7 @@ class CGSampler:
         sample_min = np.min([np.min(a) for a in self.events])
         sample_max = np.max([np.max(a) for a in self.events])
         self.m_min   = min([m_min, sample_min])
-        if self.m_min < 0.:
+        if self.m_min < 0.01:
             self.m_min = 0.01
         self.m_max   = max([m_max, sample_max])
         self.m_max_plot = m_max
@@ -637,8 +637,14 @@ class MF_Sampler():
             'alpha_': self.alpha0,
             'assignment': assign,
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
-            'ev_in_cl': {cid: list(np.where(np.array(assign) == cid)[0]) for cid in cluster_ids}
+            'ev_in_cl': {cid: list(np.where(np.array(assign) == cid)[0]) for cid in cluster_ids},
+            'logL_D': {cid: None for cid in cluster_ids}
             }
+        for cid in state['cluster_ids_']:
+            events = [self.posterior_draws[i] for i in state['ev_in_cl'][cid]]
+            n = len(events)
+            state['logL_D'][cid] = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n)
+        state['logL_D']["new"] = self.log_numerical_predictive([], self.m_min, self.m_max, 0.1, self.sigma_max, 0)
         return state
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
@@ -647,10 +653,10 @@ class MF_Sampler():
         else:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
         n = len(events)
-        logL_D = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n) #denominator
         events.append(self.posterior_draws[data_id])
+        logL_D = state['logL_D'][cluster_id] #denominator
         logL_N = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n+1) #numerator
-        return logL_N - logL_D
+        return logL_N - logL_D, logL_N
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
         I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [events, m_min, m_max, sigma_min, sigma_max, n])
@@ -668,6 +674,7 @@ class MF_Sampler():
         with Pool(self.n_parallel_threads) as p:
             output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
         scores = {out[0]: out[1] for out in output}
+        self.numerators = {out[0]: out[2] for out in output}
         self.injected_density = saved_injected_density
         normalization = 1/sum(scores.values())
         scores = {cid: score*normalization for cid, score in scores.items()}
@@ -677,11 +684,11 @@ class MF_Sampler():
         data_id = args[0]
         cid     = args[1]
         state   = args[2]
-        score = self.log_predictive_likelihood(data_id, cid, state)
+        score, logL_N = self.log_predictive_likelihood(data_id, cid, state)
         print(score)
         score += self.log_cluster_assign_score(cid, state)
         score = np.exp(score)
-        return [cid, score]
+        return [cid, score, logL_N]
         
     def log_cluster_assign_score(self, cluster_id, state):
         """Log-likelihood that a new point generated will
@@ -704,6 +711,7 @@ class MF_Sampler():
     def destroy_cluster(self, state, cluster_id):
         state["num_clusters_"] -= 1
         state['cluster_ids_'].remove(cluster_id)
+        state['ev_in_cl'].pop(cluster_id)
         
     def prune_clusters(self,state):
         for cid in state['cluster_ids_']:
@@ -715,12 +723,16 @@ class MF_Sampler():
         Sample new assignment from marginal distribution.
         If cluster is "`new`", create a new cluster.
         """
+        self.numerators = {}
         scores = self.cluster_assignment_distribution(data_id, state).items()
         labels, scores = zip(*scores)
         cid = random.choice(labels, p=scores)
         if cid == "new":
-            return self.create_cluster(state)
+            new_cid = self.create_cluster(state)
+            state['logL_D'][int(new_cid)] = self.numerators[cid]
+            return new_cid
         else:
+            state['logL_D'][int(cid)] = self.numerators[int(cid)]
             return int(cid)
 
     def update_draws(self):
@@ -731,6 +743,9 @@ class MF_Sampler():
     
     def drop_from_cluster(self, state, data_id, cid):
         state['ev_in_cl'][cid].remove(data_id)
+        events = [self.posterior_draws[i] for i in state['ev_in_cl'][cid]]
+        n = len(events)
+        state['logL_D'][cid] = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n)
 
     def add_to_cluster(self, state, data_id, cid):
         state['ev_in_cl'][cid].append(data_id)
@@ -918,7 +933,7 @@ def log_normal_density(x, x0, sigma):
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
 
 def log_norm(x, x0, sigma1, sigma2):
-    return -((x-x0)**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
+    return -((x-x0)**2 + sigma2**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
 
 
 def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
