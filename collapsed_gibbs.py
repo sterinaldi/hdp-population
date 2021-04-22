@@ -29,14 +29,13 @@ class CGSampler:
                        step,
                        alpha0 = 1,
                        gamma0 = 1,
-                       L = 10**-2,
-                       k = 1,
+                       L = 5**-1,
+                       k = 2,
                        nu = 3,
                        m_min = 5,
                        m_max = 60,
                        output_folder = './',
-                       initial_cluster_number = 5,
-                       min_cluster_occupation = 10
+                       initial_cluster_number = 5
                        ):
         
         self.events = events
@@ -56,7 +55,6 @@ class CGSampler:
         self.output_folder = output_folder
         self.icn = initial_cluster_number
         self.event_samplers = []
-        self.min_cluster_occupation = min_cluster_occupation
     
     def initialise_samplers(self):
         for i, ev in enumerate(self.events):
@@ -73,8 +71,7 @@ class CGSampler:
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
-                                            self.icn,
-                                            self.min_cluster_occupation
+                                            self.icn
                                             ))
         return
         
@@ -91,13 +88,10 @@ ray.init(ignore_reinit_error=True)
 """
 http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
 """
-@jit()
+@jit(forceobj=True)
 def my_student_t(df, t, mu, sigma, dim, s2max = None):
 
-    if s2max is None:
-        s2max = np.ones(len(t))*1
     vals, vecs = np.linalg.eigh(sigma)
-    vals       = np.minimum(vals, s2max)
     logdet     = np.log(vals).sum()
     valsinv    = np.array([1./v for v in vals])
     U          = vecs * np.sqrt(valsinv)
@@ -127,9 +121,7 @@ class Sampler_SE:
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
-                       initial_cluster_number = 10,
-                       min_cluster_occupation = 0,
-                       sigma_max = None
+                       initial_cluster_number = 10
                        ):
         
         self.mass_samples  = mass_samples
@@ -150,10 +142,6 @@ class Sampler_SE:
         self.k  = k
         self.nu  = nu
         self.mu = np.atleast_2d(np.mean(mass_samples, axis = 0))
-        if sigma_max is None:
-            self.sigma_max = np.ones(self.dim)*np.inf
-        else:
-            self.sigma_max = sigma_max
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
@@ -162,7 +150,6 @@ class Sampler_SE:
         self.output_folder = output_folder
         self.mixture_samples = []
         self.n_clusters = []
-        self.min_cluster_occupation = min_cluster_occupation
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
@@ -184,7 +171,6 @@ class Sampler_SE:
             'assignment': list(assig),
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             }
-        print(state['assignment'])
         self.update_suffstats(state)
         return state
     
@@ -346,10 +332,9 @@ class Sampler_SE:
             for cluster, key in zip(sample.values(), sample.keys()):
                 if not key in samples.keys():
                     samples[key] = []
-                if cluster['N'] > self.min_cluster_occupation:
-                    l = list(cluster['mean']) + [item for row in cluster['cov'] for item in row]
-                    l.append(cluster['N'])
-                    samples[key].append(l)
+                l = list(cluster['mean']) + [item for row in cluster['cov'] for item in row]
+                l.append(cluster['N'])
+                samples[key].append(l)
         cluster_folder = self.output_folder+'/clusters/'
         if not os.path.exists(cluster_folder):
             os.mkdir(cluster_folder)
@@ -380,28 +365,10 @@ class Sampler_SE:
         
         fig = plt.figure()
         fig.suptitle('Event {0}'.format(self.e_ID))
-#        ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
-#        prob = []
-#        for a in app:
-#            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
-#        for perc in percentiles:
-#            p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
-#        np.savetxt(self.output_events + '/rec_prob_{0}.txt'.format(self.e_ID), np.array(p[50]))
-#
-#        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
-#        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
-#        ax.plot(app, p[50], marker = '', color = 'r')
-#        ax.set_xlabel('$M_1\ [M_\\odot]$')
-#        ax.set_ylabel('$p(M)$')
         if self.dim == 2:
             ax  = fig.add_subplot(111)
-            clusters = [x if not np.count_nonzero(self.last_state['assignment'] == x) == 1 else -1 for x in self.last_state['assignment']]
-            print(clusters)
-            field_x = [x for x, c in zip(self.mass_samples[:,0], clusters) if c == -1]
-            field_y = [x for x, c in zip(self.mass_samples[:,1], clusters) if c == -1]
-            ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = clusters, marker = '.')
-            ax.scatter(field_x, field_y, c = 'r', marker = '.')
-            
+            c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.last_state['assignment'], marker = '.')
+            plt.colorbar(c)
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         elif self.dim == 3:
             ax  = fig.add_subplot(111, projection = '3d')
@@ -409,17 +376,7 @@ class Sampler_SE:
             plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         elif self.dim == 1:
             plot_clusters(self.last_state, self.output_events + '/event_{0}.pdf'.format(self.e_ID))
-#        fig = plt.figure()
-#        for i, s in enumerate(self.mixture_samples[:25]):
-#            ax = fig.add_subplot(5,len(self.mixture_samples[:25])/5,i+1)
-#            app = np.linspace(min(self.mass_samples),max(self.mass_samples),1000)
-#            for c in s.values():
-#                p = np.exp(log_normal_density(app,c['mean'], c['sigma']))*c['weight']
-#                ax.plot(app,p, linewidth = 0.4)
-#                ax.set_xlabel('$M_1\ [M_\\odot]$')
-#        plt.tight_layout()
-#        fig.savefig(self.output_events +'/components_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
-    
+            
     def run(self):
         """
         Runs sampler, saves samples and produces output plots.
