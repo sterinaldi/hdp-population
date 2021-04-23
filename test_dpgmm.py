@@ -15,14 +15,12 @@ for event in event_files:
 def normal_density(x, x0, sigma):
     return np.exp(-(x-x0)**2/(2*sigma**2))/(np.sqrt(2*np.pi)*sigma)
 
-sampler = DPGMM.CGSampler(events = events,
-                        n_draws = 100,
-                        burnin  = 100,
+sampler = DPGMM.StarClusters(catalog = events[0],
+                        n_draws = 20,
+                        burnin  = 10,
                         step    = 1,
                         alpha0  = 1,
-                        output_folder = output,
-                        # injected_density = lambda x : normal_density(x, *pars)
-                        # injected_density = lambda x : (normal_density(x, *pars_1) + normal_density(x, *pars_2))/2.
+                        output_folder = output
                         )
                         
-sampler.run_event_sampling()
+sampler.run()
