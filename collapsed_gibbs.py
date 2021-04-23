@@ -31,13 +31,14 @@ class CGSampler:
                        gamma0 = 1,
                        L = 5**-1,
                        k = 2,
-                       nu = 3,
+                       nu = 5,
                        m_min = 5,
                        m_max = 60,
                        output_folder = './',
-                       initial_cluster_number = 5
+                       initial_cluster_number = 10,
+                       maximum_sigma_cluster = 8
                        ):
-        
+
         self.events = events
         self.burnin = burnin
         self.n_draws = n_draws
@@ -55,6 +56,7 @@ class CGSampler:
         self.output_folder = output_folder
         self.icn = initial_cluster_number
         self.event_samplers = []
+        self.maximum_sigma_cluster = maximum_sigma_cluster
     
     def initialise_samplers(self):
         for i, ev in enumerate(self.events):
@@ -71,7 +73,8 @@ class CGSampler:
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
-                                            self.icn
+                                            self.icn,
+                                            self.maximum_sigma_cluster
                                             ))
         return
         
@@ -89,8 +92,7 @@ ray.init(ignore_reinit_error=True)
 http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
 """
 @jit(forceobj=True)
-def my_student_t(df, t, mu, sigma, dim, s2max = None):
-
+def my_student_t(df, t, mu, sigma, dim):
     vals, vecs = np.linalg.eigh(sigma)
     logdet     = np.log(vals).sum()
     valsinv    = np.array([1./v for v in vals])
@@ -121,7 +123,8 @@ class Sampler_SE:
                        m_min = 5,
                        m_max = 50,
                        output_folder = './',
-                       initial_cluster_number = 10
+                       initial_cluster_number = 10,
+                       maximum_sigma_cluster = 5.
                        ):
         
         self.mass_samples  = mass_samples
@@ -150,6 +153,8 @@ class Sampler_SE:
         self.output_folder = output_folder
         self.mixture_samples = []
         self.n_clusters = []
+        self.maximum_sigma_cluster = maximum_sigma_cluster
+        self.field = []
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
@@ -307,8 +312,36 @@ class Sampler_SE:
             t_shape = L_n*(k_n+1)/(k_n*t_df)
             m = student_t(df = t_df, loc = mu_n.flatten(), shape = t_shape).rvs()
             components[i] = {'mean': m, 'cov': s, 'weight': weights[i], 'N': N}
+            
+        self.select_field(state, components)
         self.mixture_samples.append(components)
     
+    def select_field(self, state, components):
+        assign = state['assignment']
+        keys = components.keys()
+        for key in keys:
+            var = components[key]['cov']
+            vals, vecs = np.linalg.eigh(var)
+            if (vals > self.maximum_sigma_cluster**2).all() or assign.count(key) == 1:
+                assign = [x if not x == key else -1 for x in assign]
+        self.field.append(assign)
+    
+    def compute_probability_field(self):
+            
+        field = np.array(self.field)
+        self.p_f = []
+        for i in range(len(self.mass_samples)):
+            f = list(field[:,i])
+            n_f = f.count(-1)
+            tot = len(f)
+            self.p_f.append(n_f/tot)
+        
+        fig = plt.figure()
+        ax  = fig.add_subplot(111)
+        c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.p_f, cmap = 'RdBu', marker = '.')
+        plt.colorbar(c, label = '$p_{field}$')
+        plt.savefig(self.output_events + '/field_probability.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        
     def run_sampling(self):
         state = self.initial_state(self.mass_samples)
         for i in range(self.burnin):
@@ -394,7 +427,8 @@ class Sampler_SE:
         self.output_samples_folder = self.output_folder + '/posterior_samples/'
         if not os.path.exists(self.output_samples_folder):
             os.mkdir(self.output_samples_folder)
-            
+        
+        self.compute_probability_field()
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
