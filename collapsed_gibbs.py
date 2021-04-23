@@ -9,7 +9,7 @@ from collections import namedtuple, Counter
 from scipy import stats
 from numpy import random
 from scipy.stats import multivariate_t as student_t
-from scipy.special import logsumexp, gammaln
+from scipy.special import logsumexp, gammaln, gamma
 from scipy.stats import multivariate_normal as mn
 from numpy.linalg import det, inv
 
@@ -20,13 +20,13 @@ Multivariate Student-t from http://gregorygundersen.com/blog/2020/01/20/multivar
 """
 
 @jit(forceobj=True)
-def my_student_t(df, t, mu, sigma, dim, sigma_max = 50):
-
+def my_student_t(df, t, mu, sigma, dim, sigma_max = 20):
 
     vals, vecs = np.linalg.eigh(sigma)
+    if df > 2:
+        vals       = np.minimum(vals, df*sigma_max**2/(df-2))
     logdet     = np.log(vals).sum()
     valsinv    = np.array([1./v for v in vals])
-    valsinv    = np.minimum(valsinv, sigma_max**2)
     U          = vecs * np.sqrt(valsinv)
     dev        = t - mu
     maha       = np.square(np.dot(dev, U)).sum(axis=-1)
@@ -46,12 +46,13 @@ class StarClusters:
                        n_draws,
                        step,
                        alpha0 = 1,
-                       L  = 5,
+                       L  = 1,
                        k  = 5,
                        nu = 5,
                        output_folder = './',
-                       initial_cluster_number = 30,
-                       maximum_sigma_cluster = 30.
+                       initial_cluster_number = 5,
+                       maximum_sigma_cluster = 20.,
+                       cluster_density = 0.02
                        ):
         
         self.catalog = catalog
@@ -79,6 +80,7 @@ class StarClusters:
         self.n_clusters = []
         self.maximum_sigma_cluster = maximum_sigma_cluster
         self.field = []
+        self.cluster_density = cluster_density
         
     def initial_state(self, samples):
         cluster_ids = list(np.arange(int(self.icn)))
@@ -246,7 +248,12 @@ class StarClusters:
         for key in keys:
             var = components[key]['cov']
             vals, vecs = np.linalg.eigh(var)
-            if (vals > self.maximum_sigma_cluster**2).all() or assign.count(key) == 1:
+            N = assign.count(key)
+            # n-dimensional ellipse volume: pi^n/2 * prod(a_i)/gamma(n/2 + 1)
+            # a_i are semiaxes
+            volume = np.pi**(self.dim/2)*np.prod(np.sqrt(vals))/gamma(self.dim/2 + 1)
+            density = N/volume
+            if density < self.cluster_density or N == 1:
                 assign = [x if not x == key else -1 for x in assign]
         self.field.append(assign)
     
@@ -262,7 +269,7 @@ class StarClusters:
         
         fig = plt.figure()
         ax  = fig.add_subplot(111)
-        c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 0.3)
+        c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 0.5)
         plt.colorbar(c, label = '$p_{field}$')
         plt.savefig(self.output_events + '/field_probability.pdf', bbox_inches = 'tight')
         
@@ -318,7 +325,7 @@ class StarClusters:
         fig = plt.figure()
         if self.dim == 2:
             ax  = fig.add_subplot(111)
-            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.last_state['assignment'], marker = '.', s = 0.3)
+            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.last_state['assignment'], marker = '.', s = 0.5)
             plt.colorbar(c)
             plt.savefig(self.output_events + '/cluster_map.pdf', bbox_inches = 'tight')
         if self.dim == 3:
