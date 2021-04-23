@@ -17,7 +17,7 @@ def normal_density(x, x0, sigma):
 
 sampler = DPGMM.CGSampler(events = events,
                         n_draws = 100,
-                        burnin  = 10,
+                        burnin  = 100,
                         step    = 1,
                         alpha0  = 1,
                         output_folder = output,
