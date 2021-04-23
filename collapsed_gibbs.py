@@ -254,7 +254,7 @@ class StarClusters:
             
         field = np.array(self.field)
         self.p_f = []
-        for i in range(len(self.mass_samples)):
+        for i in range(len(self.catalog)):
             f = list(field[:,i])
             n_f = f.count(-1)
             tot = len(f)
@@ -262,7 +262,7 @@ class StarClusters:
         
         fig = plt.figure()
         ax  = fig.add_subplot(111)
-        c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 0.3)
+        c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 0.3)
         plt.colorbar(c, label = '$p_{field}$')
         plt.savefig(self.output_events + '/field_probability.pdf', bbox_inches = 'tight')
         
@@ -318,12 +318,12 @@ class StarClusters:
         fig = plt.figure()
         if self.dim == 2:
             ax  = fig.add_subplot(111)
-            c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.last_state['assignment'], marker = '.', s = 0.3)
+            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.last_state['assignment'], marker = '.', s = 0.3)
             plt.colorbar(c)
             plt.savefig(self.output_events + '/cluster_map.pdf', bbox_inches = 'tight')
         if self.dim == 3:
             ax  = fig.add_subplot(111, projection = '3d')
-            ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], self.mass_samples[:,2], c = self.last_state['assignment'], marker = '.')
+            ax.scatter(self.catalog[:,0], self.catalog[:,1], self.catalog[:,2], c = self.last_state['assignment'], marker = '.')
             plt.savefig(self.output_events + '/cluster_map.pdf', bbox_inches = 'tight')
             
     def run(self):
