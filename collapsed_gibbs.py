@@ -20,7 +20,7 @@ Multivariate Student-t from http://gregorygundersen.com/blog/2020/01/20/multivar
 """
 
 @jit(forceobj=True)
-def my_student_t(df, t, mu, sigma, dim, sigma_max = 15):
+def my_student_t(df, t, mu, sigma, dim, sigma_max = 25):
 
     vals, vecs = np.linalg.eigh(sigma)
     if df > 2:
