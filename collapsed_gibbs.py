@@ -20,7 +20,7 @@ Multivariate Student-t from http://gregorygundersen.com/blog/2020/01/20/multivar
 """
 
 @jit(forceobj=True)
-def my_student_t(df, t, mu, sigma, dim, sigma_max = 20):
+def my_student_t(df, t, mu, sigma, dim, sigma_max = 15):
 
     vals, vecs = np.linalg.eigh(sigma)
     if df > 2:
@@ -269,7 +269,7 @@ class StarClusters:
         
         fig = plt.figure()
         ax  = fig.add_subplot(111)
-        c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 0.5)
+        c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 10)
         plt.colorbar(c, label = '$p_{field}$')
         plt.savefig(self.output_events + '/field_probability.pdf', bbox_inches = 'tight')
         
@@ -325,7 +325,7 @@ class StarClusters:
         fig = plt.figure()
         if self.dim == 2:
             ax  = fig.add_subplot(111)
-            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.last_state['assignment'], marker = '.', s = 0.5)
+            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.last_state['assignment'], marker = '.', s = 10)
             plt.colorbar(c)
             plt.savefig(self.output_events + '/cluster_map.pdf', bbox_inches = 'tight')
         if self.dim == 3:
