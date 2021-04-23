@@ -13,8 +13,6 @@ from scipy.special import logsumexp, gammaln
 from scipy.stats import multivariate_normal as mn
 from numpy.linalg import det, inv
 
-import ray
-from ray.util import ActorPool
 from numba import jit
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
@@ -36,7 +34,7 @@ class CGSampler:
                        m_max = 60,
                        output_folder = './',
                        initial_cluster_number = 10,
-                       maximum_sigma_cluster = 8
+                       maximum_sigma_cluster = 30
                        ):
 
         self.events = events
@@ -57,36 +55,27 @@ class CGSampler:
         self.icn = initial_cluster_number
         self.event_samplers = []
         self.maximum_sigma_cluster = maximum_sigma_cluster
-    
-    def initialise_samplers(self):
-        for i, ev in enumerate(self.events):
-            self.event_samplers.append(Sampler_SE.remote(
-                                            ev,
-                                            i+1,
-                                            self.burnin,
-                                            self.n_draws,
-                                            self.step,
-                                            self.alpha0,
-                                            self.L,
-                                            self.k,
-                                            self.nu,
-                                            self.m_min,
-                                            self.m_max,
-                                            self.output_folder,
-                                            self.icn,
-                                            self.maximum_sigma_cluster
-                                            ))
         return
         
     def run_event_sampling(self):
-        self.initialise_samplers()
-        tasks = [s for s in self.event_samplers]
-        pool = ActorPool(tasks)
-        for s in pool.map_unordered(lambda a, v: a.run.remote(), range(len(tasks))):
-            pass
+        job = Sampler_SE(
+                        self.events[0],
+                        0,
+                        self.burnin,
+                        self.n_draws,
+                        self.step,
+                        self.alpha0,
+                        self.L,
+                        self.k,
+                        self.nu,
+                        self.m_min,
+                        self.m_max,
+                        self.output_folder,
+                        self.icn,
+                        self.maximum_sigma_cluster
+                        )
+        job.run()
         
-        
-ray.init(ignore_reinit_error=True)
     
 """
 http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
@@ -109,7 +98,6 @@ def my_student_t(df, t, mu, sigma, dim):
 
     return float(A - B - C - D + E)
 
-@ray.remote
 class Sampler_SE:
     def __init__(self, mass_samples,
                        event_id,
@@ -311,7 +299,7 @@ class Sampler_SE:
             t_df    = nu_n - self.dim + 1
             t_shape = L_n*(k_n+1)/(k_n*t_df)
             m = student_t(df = t_df, loc = mu_n.flatten(), shape = t_shape).rvs()
-            components[i] = {'mean': m, 'cov': s, 'weight': weights[i], 'N': N}
+            components[cid] = {'mean': m, 'cov': s, 'weight': weights[i], 'N': N}
             
         self.select_field(state, components)
         self.mixture_samples.append(components)
@@ -338,7 +326,7 @@ class Sampler_SE:
         
         fig = plt.figure()
         ax  = fig.add_subplot(111)
-        c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.p_f, cmap = 'RdBu', marker = '.')
+        c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.')
         plt.colorbar(c, label = '$p_{field}$')
         plt.savefig(self.output_events + '/field_probability.pdf'.format(self.e_ID), bbox_inches = 'tight')
         
