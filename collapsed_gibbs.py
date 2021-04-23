@@ -16,75 +16,17 @@ from numpy.linalg import det, inv
 from numba import jit
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
+Multivariate Student-t from http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
 """
 
-
-class CGSampler:
-                
-    def __init__(self, events,
-                       burnin,
-                       n_draws,
-                       step,
-                       alpha0 = 1,
-                       gamma0 = 1,
-                       L = 5**-1,
-                       k = 2,
-                       nu = 5,
-                       m_min = 5,
-                       m_max = 60,
-                       output_folder = './',
-                       initial_cluster_number = 10,
-                       maximum_sigma_cluster = 30
-                       ):
-
-        self.events = events
-        self.burnin = burnin
-        self.n_draws = n_draws
-        self.step = step
-        self.m_min   = m_min
-        self.m_max   = m_max
-        # DP
-        self.alpha0 = alpha0
-        self.gamma0 = gamma0
-        # student-t
-        self.L = L
-        self.k = k
-        self.nu = nu
-        # miscellanea
-        self.output_folder = output_folder
-        self.icn = initial_cluster_number
-        self.event_samplers = []
-        self.maximum_sigma_cluster = maximum_sigma_cluster
-        return
-        
-    def run_event_sampling(self):
-        job = Sampler_SE(
-                        self.events[0],
-                        0,
-                        self.burnin,
-                        self.n_draws,
-                        self.step,
-                        self.alpha0,
-                        self.L,
-                        self.k,
-                        self.nu,
-                        self.m_min,
-                        self.m_max,
-                        self.output_folder,
-                        self.icn,
-                        self.maximum_sigma_cluster
-                        )
-        job.run()
-        
-    
-"""
-http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
-"""
 @jit(forceobj=True)
-def my_student_t(df, t, mu, sigma, dim):
+def my_student_t(df, t, mu, sigma, dim, sigma_max = 50):
+
+
     vals, vecs = np.linalg.eigh(sigma)
     logdet     = np.log(vals).sum()
     valsinv    = np.array([1./v for v in vals])
+    valsinv    = np.minimum(valsinv, sigma_max**2)
     U          = vecs * np.sqrt(valsinv)
     dev        = t - mu
     maha       = np.square(np.dot(dev, U)).sum(axis=-1)
@@ -98,9 +40,8 @@ def my_student_t(df, t, mu, sigma, dim):
 
     return float(A - B - C - D + E)
 
-class Sampler_SE:
-    def __init__(self, mass_samples,
-                       event_id,
+class StarClusters:
+    def __init__(self, catalog,
                        burnin,
                        n_draws,
                        step,
@@ -108,31 +49,26 @@ class Sampler_SE:
                        L  = 5,
                        k  = 5,
                        nu = 5,
-                       m_min = 5,
-                       m_max = 50,
                        output_folder = './',
-                       initial_cluster_number = 10,
-                       maximum_sigma_cluster = 5.
+                       initial_cluster_number = 30,
+                       maximum_sigma_cluster = 30.
                        ):
         
-        self.mass_samples  = mass_samples
+        self.catalog = catalog
         try:
-            self.dim = np.shape(self.mass_samples[0])[0]
+            self.dim = np.shape(self.catalog[0])[0]
         except:
             self.dim = 1
-        self.e_ID    = event_id
         self.burnin  = burnin
         self.n_draws = n_draws
         self.step    = step
-        self.m_min   = m_min
-        self.m_max   = m_max
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.L  = (L**2*(len(self.mass_samples)/initial_cluster_number))*np.identity(self.dim)
+        self.L  = (L**2*(len(self.catalog)/initial_cluster_number))*np.identity(self.dim)
         self.k  = k
         self.nu  = nu
-        self.mu = np.atleast_2d(np.mean(mass_samples, axis = 0))
+        self.mu = np.atleast_2d(np.mean(catalog, axis = 0))
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
@@ -326,12 +262,12 @@ class Sampler_SE:
         
         fig = plt.figure()
         ax  = fig.add_subplot(111)
-        c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.')
+        c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 0.3)
         plt.colorbar(c, label = '$p_{field}$')
-        plt.savefig(self.output_events + '/field_probability.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        plt.savefig(self.output_events + '/field_probability.pdf', bbox_inches = 'tight')
         
     def run_sampling(self):
-        state = self.initial_state(self.mass_samples)
+        state = self.initial_state(self.catalog)
         for i in range(self.burnin):
             print('\rBURN-IN: {0}/{1}'.format(i+1, self.burnin), end = '')
             self.gibbs_step(state)
@@ -379,24 +315,16 @@ class Sampler_SE:
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
         
-        app  = np.linspace(self.m_min, self.m_max, 1000)
-        percentiles = [5,16, 50, 84, 95]
-        
-        p = {}
-        
         fig = plt.figure()
-        fig.suptitle('Event {0}'.format(self.e_ID))
         if self.dim == 2:
             ax  = fig.add_subplot(111)
-            c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.last_state['assignment'], marker = '.')
+            c = ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], c = self.last_state['assignment'], marker = '.', s = 0.3)
             plt.colorbar(c)
-            plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
-        elif self.dim == 3:
+            plt.savefig(self.output_events + '/cluster_map.pdf', bbox_inches = 'tight')
+        if self.dim == 3:
             ax  = fig.add_subplot(111, projection = '3d')
             ax.scatter(self.mass_samples[:,0], self.mass_samples[:,1], self.mass_samples[:,2], c = self.last_state['assignment'], marker = '.')
-            plt.savefig(self.output_events + '/event_{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
-        elif self.dim == 1:
-            plot_clusters(self.last_state, self.output_events + '/event_{0}.pdf'.format(self.e_ID))
+            plt.savefig(self.output_events + '/cluster_map.pdf', bbox_inches = 'tight')
             
     def run(self):
         """
@@ -420,7 +348,7 @@ class Sampler_SE:
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_folder+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
+        fig.savefig(self.output_folder+'n_clusters.pdf', bbox_inches='tight')
         return
 
 @jit(nopython = True)
