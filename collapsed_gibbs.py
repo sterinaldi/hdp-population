@@ -51,7 +51,7 @@ class StarClusters:
                        nu = 5,
                        output_folder = './',
                        initial_cluster_number = 50,
-                       maximum_sigma_cluster = 50.,
+                       maximum_sigma_cluster = 20.,
                        p_f_threshold = 0.5
                        ):
         
@@ -365,7 +365,7 @@ class StarClusters:
         if self.dim == 2:
             ax  = fig.add_subplot(111)
             c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = clusters, cmap = cmap, marker = '.', s = 3)
-            plt.colorbar(c, label('Cluster ID'))
+            plt.colorbar(c, label = 'Cluster ID')
             plt.savefig(self.output_folder + '/all_stars.pdf', bbox_inches = 'tight')
         if self.dim == 3:
             ax  = fig.add_subplot(111, projection = '3d')
