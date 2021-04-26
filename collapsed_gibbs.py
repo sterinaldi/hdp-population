@@ -20,11 +20,11 @@ Multivariate Student-t from http://gregorygundersen.com/blog/2020/01/20/multivar
 """
 
 @jit(forceobj=True)
-def my_student_t(df, t, mu, sigma, dim, sigma_max = 25):
+def my_student_t(df, t, mu, sigma, dim, cluster_id, sigma_max = 20):
 
     vals, vecs = np.linalg.eigh(sigma)
-    if df > 2:
-        vals       = np.minimum(vals, df*sigma_max**2/(df-2))
+    if not cluster_id == -1:
+        vals       = np.minimum(vals, sigma_max**2)
     logdet     = np.log(vals).sum()
     valsinv    = np.array([1./v for v in vals])
     U          = vecs * np.sqrt(valsinv)
@@ -50,9 +50,9 @@ class StarClusters:
                        k  = 5,
                        nu = 5,
                        output_folder = './',
-                       initial_cluster_number = 5,
-                       maximum_sigma_cluster = 20.,
-                       cluster_density = 0.02
+                       initial_cluster_number = 50,
+                       maximum_sigma_cluster = 50.,
+                       p_f_threshold = 0.5
                        ):
         
         self.catalog = catalog
@@ -71,7 +71,8 @@ class StarClusters:
         self.nu  = nu
         self.mu = np.atleast_2d(np.mean(catalog, axis = 0))
         # Miscellanea
-        self.icn    = initial_cluster_number
+        self.cls_per_dim = initial_cluster_number
+        self.icn    = initial_cluster_number**self.dim
         self.states = []
         self.SuffStat = namedtuple('SuffStat', 'mean cov N')
         # Output
@@ -80,13 +81,20 @@ class StarClusters:
         self.n_clusters = []
         self.maximum_sigma_cluster = maximum_sigma_cluster
         self.field = []
-        self.cluster_density = cluster_density
-        
+        self.p_t = p_f_threshold
+    
+    def assign_to_cluster(self, sample, steps):
+        a = 0
+        for i,d in enumerate(sample):
+            a += (i+1)*(d/steps[i])
+        return int(a)
+    
     def initial_state(self, samples):
-        cluster_ids = list(np.arange(int(self.icn)))
-        assig = np.zeros(len(samples))
-        for i in range(int(self.icn)):
-            assig[i*(int(len(samples)/self.icn)+1):(i+1)*(int(len(samples)/self.icn)+1)] = i
+        steps = [(max(np.array(samples)[:,d]) - min(np.array(samples)[:,d]))/self.cls_per_dim for d in range(self.dim)]
+        assig = [self.assign_to_cluster(x, steps) for x in samples]
+        for _ in range(int(len(samples)/20)):
+            assig[random.randint(len(assig))] = -1
+        cluster_ids = list(set(assig))
         state = {
             'cluster_ids_': cluster_ids,
             'data_': samples,
@@ -134,7 +142,7 @@ class StarClusters:
         t_df    = nu_n - self.dim + 1
         t_shape = L_n*(k_n+1)/(k_n*t_df)
         # Compute logLikelihood
-        logL = my_student_t(df = t_df, t = np.atleast_2d(x), mu = mu_n, sigma = t_shape, dim = self.dim)
+        logL = my_student_t(df = t_df, t = np.atleast_2d(x), mu = mu_n, sigma = t_shape, dim = self.dim, cluster_id = cluster_id, sigma_max = self.maximum_sigma_cluster)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
@@ -249,30 +257,56 @@ class StarClusters:
             var = components[key]['cov']
             vals, vecs = np.linalg.eigh(var)
             N = assign.count(key)
-            # n-dimensional ellipse volume: pi^n/2 * prod(a_i)/gamma(n/2 + 1)
-            # a_i are semiaxes
-            volume = np.pi**(self.dim/2)*np.prod(np.sqrt(vals))/gamma(self.dim/2 + 1)
-            density = N/volume
-            if density < self.cluster_density or N == 1:
+            if key == -1 or N == 1:
                 assign = [x if not x == key else -1 for x in assign]
         self.field.append(assign)
     
     def compute_probability_field(self):
-            
         field = np.array(self.field)
         self.p_f = []
+        self.field_stars = []
+        self.cl_stars    = []
+        self.cl_assign   = []
+        self.cl_cat      = []
         for i in range(len(self.catalog)):
             f = list(field[:,i])
             n_f = f.count(-1)
             tot = len(f)
             self.p_f.append(n_f/tot)
+            if n_f/tot < self.p_t:
+                self.cl_stars.append(self.catalog[i])
+                id = Counter([fi for fi in f if not fi == -1]).most_common(1)[0][0]
+                self.cl_assign.append(id)
+                self.cl_cat.append(id)
+            else:
+                self.field_stars.append(self.catalog[i])
+                self.cl_cat.append(-1)
+        self.field_stars = np.array(self.field_stars)
+        self.cl_stars    = np.array(self.cl_stars)
+        self.cl_assign   = np.array(self.cl_assign)
+        
+        for i, a in enumerate([x for x in set(self.cl_cat) if not x == -1]):
+            self.cl_cat = [i if x == a else x for x in self.cl_cat]
         
         fig = plt.figure()
         ax  = fig.add_subplot(111)
-        c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 10)
+        c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 3)
         plt.colorbar(c, label = '$p_{field}$')
-        plt.savefig(self.output_events + '/field_probability.pdf', bbox_inches = 'tight')
+        plt.savefig(self.output_folder + '/field_probability.pdf', bbox_inches = 'tight')
         
+        fig = plt.figure()
+        ax  = fig.add_subplot(111)
+        cl = self.cl_assign
+        for i, a in enumerate(list(set(cl))):
+            cl = [i if x == a else x for x in cl]
+        cmap = plt.get_cmap('gist_rainbow', len(set(cl)))
+        c = ax.scatter(self.cl_stars[:,0], self.cl_stars[:,1], c = cl, cmap = cmap, marker = '.', s = 3)
+        plt.colorbar(c, label = 'Cluster ID')
+        plt.savefig(self.output_folder + '/clusters.pdf', bbox_inches = 'tight')
+        
+        clustered_catalog = np.array([self.catalog[:,i] for i in range(len(self.catalog[0]))] + [np.array(self.cl_cat)])
+        np.savetxt(self.output_folder + '/updated_catalog.txt', clustered_catalog.T)
+    
     def run_sampling(self):
         state = self.initial_state(self.catalog)
         for i in range(self.burnin):
@@ -323,15 +357,20 @@ class StarClusters:
         """
         
         fig = plt.figure()
+        clusters = self.field[-1]
+        for i, a in enumerate(set(self.field[-1])):
+            if not a == -1:
+                clusters = [i if x == a else x for x in clusters]
+        cmap = plt.get_cmap('gist_rainbow', len(set(clusters)))
         if self.dim == 2:
             ax  = fig.add_subplot(111)
-            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = self.last_state['assignment'], marker = '.', s = 10)
-            plt.colorbar(c)
-            plt.savefig(self.output_events + '/cluster_map.pdf', bbox_inches = 'tight')
+            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = clusters, cmap = cmap, marker = '.', s = 3)
+            plt.colorbar(c, label('Cluster ID'))
+            plt.savefig(self.output_folder + '/all_stars.pdf', bbox_inches = 'tight')
         if self.dim == 3:
             ax  = fig.add_subplot(111, projection = '3d')
-            ax.scatter(self.catalog[:,0], self.catalog[:,1], self.catalog[:,2], c = self.last_state['assignment'], marker = '.')
-            plt.savefig(self.output_events + '/cluster_map.pdf', bbox_inches = 'tight')
+            ax.scatter(self.catalog[:,0], self.catalog[:,1], self.catalog[:,2], c = clusters, cmap = cmap, marker = '.', s = 3)
+            plt.savefig(self.output_folder + '/cluster_map.pdf', bbox_inches = 'tight')
             
     def run(self):
         """
@@ -341,16 +380,10 @@ class StarClusters:
         flags = []
         self.run_sampling()
         # reconstructed events
-        self.output_events = self.output_folder + '/reconstructed_events'
-        if not os.path.exists(self.output_events):
-            os.mkdir(self.output_events)
         self.save_mixture_samples()
         if self.dim < 4:
             self.plot_samples()
-        self.output_samples_folder = self.output_folder + '/posterior_samples/'
-        if not os.path.exists(self.output_samples_folder):
-            os.mkdir(self.output_samples_folder)
-        
+
         self.compute_probability_field()
         fig = plt.figure()
         ax = fig.add_subplot(111)
