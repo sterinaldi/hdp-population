@@ -399,14 +399,12 @@ class StarClusters:
         self.run_sampling()
         # reconstructed events
         self.save_mixture_samples()
-        if self.dim < 4:
-            self.plot_samples()
-
+        self.plot_samples()
         self.compute_probability_field()
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_folder+'n_clusters.pdf', bbox_inches='tight')
+        fig.savefig(self.output_folder+'/n_clusters.pdf', bbox_inches='tight')
         return
 
 @jit(nopython = True)
