@@ -294,6 +294,13 @@ class StarClusters:
         plt.colorbar(c, label = '$p_{field}$')
         plt.savefig(self.output_folder + '/field_probability.pdf', bbox_inches = 'tight')
         
+        if self.dim > 2:
+            fig = plt.figure()
+            ax  = fig.add_subplot(111, projection = '3d')
+            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], self.catalog[:,2], c = self.p_f, cmap = 'coolwarm', marker = '.', s = 3)
+            plt.colorbar(c, label = '$p_{field}$')
+            plt.savefig(self.output_folder + '/field_probability_3d.pdf', bbox_inches = 'tight')
+        
         fig = plt.figure()
         ax  = fig.add_subplot(111)
         cl = self.cl_assign
@@ -303,6 +310,13 @@ class StarClusters:
         c = ax.scatter(self.cl_stars[:,0], self.cl_stars[:,1], c = cl, cmap = cmap, marker = '.', s = 3)
         plt.colorbar(c, label = 'Cluster ID')
         plt.savefig(self.output_folder + '/clusters.pdf', bbox_inches = 'tight')
+        
+        if self.dim > 2:
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            c = ax.scatter(self.cl_stars[:,0], self.cl_stars[:,1], self.cl_stars[:,2], c = cl, cmap = cmap, marker = '.', s = 3)
+            plt.colorbar(c, label = 'Cluster ID')
+            plt.savefig(self.output_folder + '/clusters_3d.pdf', bbox_inches = 'tight')
         
         clustered_catalog = np.array([self.catalog[:,i] for i in range(len(self.catalog[0]))] + [np.array(self.cl_cat)])
         np.savetxt(self.output_folder + '/updated_catalog.txt', clustered_catalog.T)
@@ -362,15 +376,14 @@ class StarClusters:
             if not a == -1:
                 clusters = [i if x == a else x for x in clusters]
         cmap = plt.get_cmap('gist_rainbow', len(set(clusters)))
-        if self.dim == 2:
-            ax  = fig.add_subplot(111)
-            c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = clusters, cmap = cmap, marker = '.', s = 3)
-            plt.colorbar(c, label = 'Cluster ID')
-            plt.savefig(self.output_folder + '/all_stars.pdf', bbox_inches = 'tight')
-        if self.dim == 3:
+        ax  = fig.add_subplot(111)
+        c = ax.scatter(self.catalog[:,0], self.catalog[:,1], c = clusters, cmap = cmap, marker = '.', s = 3)
+        plt.colorbar(c, label = 'Cluster ID')
+        plt.savefig(self.output_folder + '/all_stars.pdf', bbox_inches = 'tight')
+        if self.dim > 2:
             ax  = fig.add_subplot(111, projection = '3d')
             ax.scatter(self.catalog[:,0], self.catalog[:,1], self.catalog[:,2], c = clusters, cmap = cmap, marker = '.', s = 3)
-            plt.savefig(self.output_folder + '/cluster_map.pdf', bbox_inches = 'tight')
+            plt.savefig(self.output_folder + '/all_stars_3d.pdf', bbox_inches = 'tight')
             
     def run(self):
         """
