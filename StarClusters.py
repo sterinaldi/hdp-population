@@ -21,6 +21,8 @@ def main():
         exit()
     if options.output is None:
         options.output = '/'.join(options.cat_file.split('/')[:-1])
+    if options.dim is not None:
+        options.dim = int(options.dim)
     options.hyperpars = [float(x) for x in options.hyperpars.split(',')]
     options.samp_settings = [int(x) for x in options.samp_settings.split(',')]
     catalog = np.genfromtxt(options.cat_file)
@@ -29,14 +31,14 @@ def main():
                             burnin  = options.samp_settings[0],
                             n_draws = options.samp_settings[1],
                             step    = options.samp_settings[2],
-                            alpha0  = options.alpha,
+                            alpha0  = float(options.alpha),
                             L       = options.hyperpars[0],
                             k       = options.hyperpars[1],
                             nu      = options.hyperpars[2],
                             output_folder = options.output,
-                            initial_cluster_number = options.initial_cluster_number,
-                            maximum_sigma_cluster  = options.sigma_max,
-                            p_f_threshold = options.p_f,
+                            initial_cluster_number = int(options.initial_cluster_number),
+                            maximum_sigma_cluster  = float(options.sigma_max),
+                            p_f_threshold = float(options.p_f),
                             dim = options.dim
                             )
     sampler.run()
