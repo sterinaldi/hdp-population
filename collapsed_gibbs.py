@@ -52,14 +52,18 @@ class StarClusters:
                        output_folder = './',
                        initial_cluster_number = 50,
                        maximum_sigma_cluster = 20.,
-                       p_f_threshold = 0.5
+                       p_f_threshold = 0.5,
+                       dim = None
                        ):
         
         self.catalog = catalog
-        try:
-            self.dim = np.shape(self.catalog[0])[0]
-        except:
-            self.dim = 1
+        if dim is None:
+            try:
+                self.dim = np.shape(self.catalog[0])[0]
+            except:
+                self.dim = 1
+        else:
+            self.dim = dim
         self.burnin  = burnin
         self.n_draws = n_draws
         self.step    = step
@@ -313,7 +317,7 @@ class StarClusters:
         
         if self.dim > 2:
             fig = plt.figure()
-            ax = fig.add_subplot(111)
+            ax = fig.add_subplot(111, projection = '3d')
             c = ax.scatter(self.cl_stars[:,0], self.cl_stars[:,1], self.cl_stars[:,2], c = cl, cmap = cmap, marker = '.', s = 3)
             plt.colorbar(c, label = 'Cluster ID')
             plt.savefig(self.output_folder + '/clusters_3d.pdf', bbox_inches = 'tight')
@@ -381,6 +385,7 @@ class StarClusters:
         plt.colorbar(c, label = 'Cluster ID')
         plt.savefig(self.output_folder + '/all_stars.pdf', bbox_inches = 'tight')
         if self.dim > 2:
+            fig = plt.figure()
             ax  = fig.add_subplot(111, projection = '3d')
             ax.scatter(self.catalog[:,0], self.catalog[:,1], self.catalog[:,2], c = clusters, cmap = cmap, marker = '.', s = 3)
             plt.savefig(self.output_folder + '/all_stars_3d.pdf', bbox_inches = 'tight')
