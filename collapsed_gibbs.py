@@ -135,7 +135,7 @@ class CGSampler:
         self.autocorrelation_ev = autocorrelation_ev
         ray.init(ignore_reinit_error=True, log_to_driver=False)
         
-    def initialise_samplers(self, marker, seed):
+    def initialise_samplers(self, marker):
         event_samplers = []
         for i, ev in enumerate(self.events[marker:marker+self.n_parallel_threads]):
             event_samplers.append(Sampler_SE.remote(
@@ -154,17 +154,14 @@ class CGSampler:
                                             False,
                                             self.icn,
                                             self.sigma_max_ev,
-                                            self.autocorrelation_ev,
-                                            seed
-                                            ))
+                                            self.autocorrelation_ev                                            ))
         return event_samplers
         
     def run_event_sampling(self):
         i = 0
-        seeds = np.arange(len(self.events)) #random.randint(0, 2**31, size = len(self.events))
         self.posterior_functions_events = []
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
-            tasks = self.initialise_samplers(n*self.n_parallel_threads, seeds[n])
+            tasks = self.initialise_samplers(n*self.n_parallel_threads)
             pool = ActorPool(tasks)
             for s in pool.map(lambda a, v: a.run.remote(), range(len(tasks))):
                 self.posterior_functions_events.append(s)
@@ -258,13 +255,10 @@ class Sampler_SE:
                        verbose = True,
                        initial_cluster_number = 5.,
                        sigma_max = 5.,
-                       autocorrelation = False,
-                       seed = None
+                       autocorrelation = False
                        ):
         # New seed for each subprocess
-        if seed is not None:
-            random.seed(seed)
-        
+        random.seed(os.pid)
         self.mass_samples  = mass_samples
         self.e_ID    = event_id
         self.burnin  = burnin
