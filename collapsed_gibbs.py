@@ -407,7 +407,7 @@ class Sampler_SE:
         """
         scores = self.cluster_assignment_distribution(data_id, state).items()
         labels, scores = zip(*scores)
-        cid = random.choice(labels, p=scores)
+        cid = rd.choice(labels, p=scores)
         if cid == "new":
             return self.create_cluster(state)
         else:
@@ -740,7 +740,7 @@ class MF_Sampler():
         self.numerators = {}
         scores = self.cluster_assignment_distribution(data_id, state).items()
         labels, scores = zip(*scores)
-        cid = rd.choice(labels, p=scores)
+        cid = random.choice(labels, p=scores)
         if cid == "new":
             new_cid = self.create_cluster(state)
             state['logL_D'][int(new_cid)] = self.numerators[cid]
