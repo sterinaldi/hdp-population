@@ -161,7 +161,7 @@ class CGSampler:
         
     def run_event_sampling(self):
         i = 0
-        seeds = random.randint(0, 2**63, size = len(self.events))
+        seeds = np.arange(len(self.events)) #random.randint(0, 2**31, size = len(self.events))
         self.posterior_functions_events = []
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
             tasks = self.initialise_samplers(n*self.n_parallel_threads, seeds[n])
