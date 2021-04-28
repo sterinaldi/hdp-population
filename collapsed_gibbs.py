@@ -258,6 +258,8 @@ class Sampler_SE:
                        sigma_max = 5.,
                        autocorrelation = False
                        ):
+        # New seed for each subprocess
+        random.seed()
         
         self.mass_samples  = mass_samples
         self.e_ID    = event_id
