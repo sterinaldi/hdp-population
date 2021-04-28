@@ -133,7 +133,7 @@ class CGSampler:
             self.names = [str(i+1) for i in range(len(self.events))]
         self.autocorrelation = autocorrelation
         self.autocorrelation_ev = autocorrelation_ev
-        ray.init(ignore_reinit_error=True)#, log_to_driver=False)
+        ray.init(ignore_reinit_error=True, log_to_driver=False)
         
     def initialise_samplers(self, marker):
         event_samplers = []
@@ -154,7 +154,8 @@ class CGSampler:
                                             False,
                                             self.icn,
                                             self.sigma_max_ev,
-                                            self.autocorrelation_ev                                            ))
+                                            self.autocorrelation_ev
+                                            ))
         return event_samplers
         
     def run_event_sampling(self):
@@ -258,8 +259,8 @@ class Sampler_SE:
                        autocorrelation = False
                        ):
         # New seed for each subprocess
-        np.random.seed(os.getpid())
-        print(os.getpid())
+        import numpy.random as rd
+        rd.seed(os.getpid())
         self.mass_samples  = mass_samples
         self.e_ID    = event_id
         self.burnin  = burnin
@@ -739,7 +740,7 @@ class MF_Sampler():
         self.numerators = {}
         scores = self.cluster_assignment_distribution(data_id, state).items()
         labels, scores = zip(*scores)
-        cid = random.choice(labels, p=scores)
+        cid = rd.choice(labels, p=scores)
         if cid == "new":
             new_cid = self.create_cluster(state)
             state['logL_D'][int(new_cid)] = self.numerators[cid]
