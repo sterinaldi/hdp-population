@@ -9,7 +9,7 @@ from numpy import random
 
 from scipy import stats
 from scipy.stats import t as student_t
-from scipy.stats import entropy
+from scipy.stats import entropy, gamma
 from scipy.special import logsumexp, betaln, gammaln
 from scipy.interpolate import interp1d
 from scipy.integrate import dblquad
@@ -287,6 +287,7 @@ class Sampler_SE:
         self.n_clusters = []
         self.verbose = verbose
         self.autocorrelation = autocorrelation
+        self.alpha_samples = []
         
     def initial_state(self, samples):
         assign = [a%int(self.icn) for a in range(len(samples))]
@@ -414,6 +415,10 @@ class Sampler_SE:
         """
         Collapsed Gibbs sampler for Dirichlet Process Mixture Model
         """
+        # alpha sampling
+        new_alpha = gamma.rvs(loc = 1, scale = 1)
+        state['alpha_'] = new_alpha
+        self.alpha_samples.append(new_alpha)
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
             state['suffstats'][cid] = self.remove_datapoint_from_suffstats(datapoint, state['suffstats'][cid])
@@ -530,7 +535,11 @@ class Sampler_SE:
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
         fig.savefig(self.output_n_clusters+'n_clusters_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
-    
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))))
+        fig.savefig(self.alpha_folder+'/alpha_{0}.pdf'.format(self.e_ID), bbox_inches='tight'))
     
     def compute_autocorrelation(self):
         dx = (self.m_max_plot - self.m_min)/1000.
@@ -575,6 +584,9 @@ class Sampler_SE:
         if not os.path.exists(self.output_events + '/entropy/'):
             os.mkdir(self.output_events + '/entropy/')
         self.output_entropy = self.output_events + '/entropy/'
+        if not os.path.exists(self.output_events + '/alpha/'):
+            os.mkdir(self.output_events + '/alpha/')
+        self.alpha_folder = self.output_events + '/alpha/'
         self.run_sampling()
         self.postprocess()
         return
