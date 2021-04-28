@@ -539,7 +539,7 @@ class Sampler_SE:
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))))
-        fig.savefig(self.alpha_folder+'/alpha_{0}.pdf'.format(self.e_ID), bbox_inches='tight'))
+        fig.savefig(self.alpha_folder+'/alpha_{0}.pdf'.format(self.e_ID), bbox_inches='tight')
     
     def compute_autocorrelation(self):
         dx = (self.m_max_plot - self.m_min)/1000.
