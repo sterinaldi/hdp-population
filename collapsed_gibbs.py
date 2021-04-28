@@ -406,7 +406,7 @@ class Sampler_SE:
         """
         scores = self.cluster_assignment_distribution(data_id, state).items()
         labels, scores = zip(*scores)
-        cid = random.choice(labels, p=scores)
+        cid = random.RandomState().choice(labels, p=scores)
         if cid == "new":
             return self.create_cluster(state)
         else:
@@ -432,7 +432,7 @@ class Sampler_SE:
     def sample_mixture_parameters(self, state):
         ss = state['suffstats']
         alpha = [ss[cid].N + state['alpha_'] / state['num_clusters_'] for cid in state['cluster_ids_']]
-        weights = stats.dirichlet(alpha).rvs(size=1).flatten()
+        weights = random.RandomState().dirichlet(alpha).flatten()
         components = {}
         for i, cid in enumerate(state['cluster_ids_']):
             mean = ss[cid].mean
@@ -638,6 +638,7 @@ class MF_Sampler():
         self.diagnostic = diagnostic
         self.autocorrelation = autocorrelation
         self.n_parallel_threads = n_parallel_threads
+        self.alpha_samples = []
         
     def initial_state(self):
         self.update_draws()
@@ -768,6 +769,9 @@ class MF_Sampler():
         Collapsed Gibbs sampler for Dirichlet Process Mixture Model
         """
         self.update_draws()
+        new_alpha = random.RandomState().gamma(1)
+        state['alpha_'] = new_alpha
+        self.alpha_samples.append(new_alpha)
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
             print(data_id)
@@ -901,7 +905,7 @@ class MF_Sampler():
         """
         Runs sampler, saves samples and produces output plots.
         """
-        
+
         self.run_sampling()
         # reconstructed events
         self.output_events = self.output_folder
@@ -912,6 +916,10 @@ class MF_Sampler():
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
         fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))))
+        fig.savefig(self.output_events+'/gamma_mf.pdf', bbox_inches='tight')
         return
 
 
