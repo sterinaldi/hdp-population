@@ -417,7 +417,7 @@ class Sampler_SE:
         Collapsed Gibbs sampler for Dirichlet Process Mixture Model
         """
         # alpha sampling
-        new_alpha = gamma.rvs(1)
+        new_alpha = random.RandomState().gamma(1)
         state['alpha_'] = new_alpha
         self.alpha_samples.append(new_alpha)
         pairs = zip(state['data_'], state['assignment'])
