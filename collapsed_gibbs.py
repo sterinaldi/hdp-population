@@ -699,7 +699,6 @@ class MF_Sampler():
         cid     = args[1]
         state   = args[2]
         score, logL_N = self.log_predictive_likelihood(data_id, cid, state)
-        print(score)
         score += self.log_cluster_assign_score(cid, state)
         score = np.exp(score)
         return [cid, score, logL_N]
@@ -774,7 +773,6 @@ class MF_Sampler():
         self.alpha_samples.append(new_alpha)
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
-            print(data_id)
             self.drop_from_cluster(state, data_id, cid)
             self.prune_clusters(state)
             cid = self.sample_assignment(data_id, state)
@@ -954,7 +952,7 @@ def log_normal_density(x, x0, sigma):
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
 
 def log_norm(x, x0, sigma1, sigma2):
-    return -((x-x0)**2)/(2*(sigma1**2 + sigma2**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2 + sigma2**2)
+    return -((x-x0)**2)/(2*(sigma1**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2)
 
 
 def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
