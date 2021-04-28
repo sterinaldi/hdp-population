@@ -259,8 +259,7 @@ class Sampler_SE:
                        autocorrelation = False
                        ):
         # New seed for each subprocess
-        import numpy.random as rd
-        rd.seed(os.getpid())
+        random.RandomState(seed = os.getpid())
         self.mass_samples  = mass_samples
         self.e_ID    = event_id
         self.burnin  = burnin
