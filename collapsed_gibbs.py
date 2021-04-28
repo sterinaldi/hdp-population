@@ -133,7 +133,7 @@ class CGSampler:
             self.names = [str(i+1) for i in range(len(self.events))]
         self.autocorrelation = autocorrelation
         self.autocorrelation_ev = autocorrelation_ev
-        ray.init(ignore_reinit_error=True, log_to_driver=False)
+        ray.init(ignore_reinit_error=True)#, log_to_driver=False)
         
     def initialise_samplers(self, marker):
         event_samplers = []
