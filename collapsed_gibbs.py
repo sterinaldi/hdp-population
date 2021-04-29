@@ -660,7 +660,7 @@ class MF_Sampler():
             'data_': self.posterior_draws,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
-            'Ntot': len(self.posterior_draws)
+            'Ntot': len(self.posterior_draws),
             'assignment': assign,
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             'ev_in_cl': {cid: list(np.where(np.array(assign) == cid)[0]) for cid in cluster_ids},
