@@ -429,7 +429,7 @@ class Sampler_SE:
         Collapsed Gibbs sampler for Dirichlet Process Mixture Model
         """
         # alpha sampling
-        state['alpha_'] = update_alpha(state)
+        state['alpha_'] = self.update_alpha(state)
         self.alpha_samples.append(state['alpha_'])
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
@@ -792,7 +792,7 @@ class MF_Sampler():
         Collapsed Gibbs sampler for Dirichlet Process Mixture Model
         """
         self.update_draws()
-        state['alpha_'] = update_alpha(state)
+        state['alpha_'] = self.update_alpha(state)
         self.alpha_samples.append(state['alpha_'])
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
