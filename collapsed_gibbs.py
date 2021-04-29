@@ -412,14 +412,25 @@ class Sampler_SE:
         else:
             return int(cid)
 
+    def update_alpha(self, state, trimming = 100):
+        a_old = state['alpha_']
+        n     = state['Ntot']
+        K     = len(state['cluster_ids_'])
+        for _ in range(trimming):
+            a_new = random.RandomState().gamma(1)
+            logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
+            logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
+            if logP_new - logP_old > np.log(random.uniform()):
+                a_old = a_new
+        return a_old
+
     def gibbs_step(self, state):
         """
         Collapsed Gibbs sampler for Dirichlet Process Mixture Model
         """
         # alpha sampling
-        new_alpha = random.RandomState().gamma(1)
-        state['alpha_'] = new_alpha
-        self.alpha_samples.append(new_alpha)
+        state['alpha_'] = update_alpha(state)
+        self.alpha_samples.append(state['alpha_'])
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
             state['suffstats'][cid] = self.remove_datapoint_from_suffstats(datapoint, state['suffstats'][cid])
@@ -649,6 +660,7 @@ class MF_Sampler():
             'data_': self.posterior_draws,
             'num_clusters_': int(self.icn),
             'alpha_': self.alpha0,
+            'Ntot': len(self.posterior_draws)
             'assignment': assign,
             'pi': {cid: self.alpha0 / self.icn for cid in cluster_ids},
             'ev_in_cl': {cid: list(np.where(np.array(assign) == cid)[0]) for cid in cluster_ids},
@@ -763,14 +775,25 @@ class MF_Sampler():
     def add_to_cluster(self, state, data_id, cid):
         state['ev_in_cl'][cid].append(data_id)
 
+    def update_alpha(self, state, trimming = 100):
+        a_old = state['alpha_']
+        n     = state['Ntot']
+        K     = len(state['cluster_ids_'])
+        for _ in range(trimming):
+            a_new = random.RandomState().gamma(1)
+            logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
+            logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
+            if logP_new - logP_old > np.log(random.uniform()):
+                a_old = a_new
+        return a_old
+    
     def gibbs_step(self, state):
         """
         Collapsed Gibbs sampler for Dirichlet Process Mixture Model
         """
         self.update_draws()
-        new_alpha = random.RandomState().gamma(1)
-        state['alpha_'] = new_alpha
-        self.alpha_samples.append(new_alpha)
+        state['alpha_'] = update_alpha(state)
+        self.alpha_samples.append(state['alpha_'])
         pairs = zip(state['data_'], state['assignment'])
         for data_id, (datapoint, cid) in enumerate(pairs):
             self.drop_from_cluster(state, data_id, cid)
