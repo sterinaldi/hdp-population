@@ -412,7 +412,7 @@ class Sampler_SE:
         else:
             return int(cid)
 
-    def update_alpha(self, state, trimming = 20):
+    def update_alpha(self, state, trimming = 100):
         a_old = state['alpha_']
         n     = state['Ntot']
         K     = len(state['cluster_ids_'])
@@ -775,7 +775,7 @@ class MF_Sampler():
     def add_to_cluster(self, state, data_id, cid):
         state['ev_in_cl'][cid].append(data_id)
 
-    def update_alpha(self, state, trimming = 20):
+    def update_alpha(self, state, trimming = 100):
         a_old = state['alpha_']
         n     = state['Ntot']
         K     = len(state['cluster_ids_'])
