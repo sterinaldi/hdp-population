@@ -234,7 +234,7 @@ class CGSampler:
         return
         
 
-@jit(forceobj=True)
+@jit(nopython=True)
 def my_student_t(df, t):
     b = betaln(0.5, df*0.5)
     return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
@@ -959,7 +959,6 @@ class MF_Sampler():
         return
         
 
-
 def log_normal_density(x, x0, sigma):
     """
     Normal probability density function.
@@ -973,10 +972,19 @@ def log_normal_density(x, x0, sigma):
         :double:       N(x).
     """
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
-
+    
+@jit(nopython = True)
 def log_norm(x, x0, sigma1, sigma2):
     return -((x-x0)**2)/(2*(sigma1**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2)
 
-
 def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
-    return np.exp(np.sum([logsumexp([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()]) for ev in events]) + np.log(m_max - m_min) - (n-1)*np.log(sigma_max-sigma_min))
+    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]) + np.log(m_max - m_min) - (n-1)*np.log(sigma_max-sigma_min))
+
+@jit(nopython = True)
+def my_logsumexp(a):
+    a_max = a.max()
+    tmp = np.exp(a - a_max)
+    s = np.sum(tmp)
+    out = np.log(s)
+    out += a_max
+    return out
