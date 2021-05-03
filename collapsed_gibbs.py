@@ -233,7 +233,6 @@ class CGSampler:
         return
         
 
-@njit()
 def my_student_t(df, t):
     b = betaln(0.5, df*0.5)
     return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
