@@ -676,6 +676,7 @@ class MF_Sampler():
     def log_predictive_likelihood(self, data_id, cluster_id, state):
         if cluster_id == "new":
             events = []
+            return -np.log(self.m_max-self.m_min), -np.log(self.m_max-self.m_min)
         else:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
         n = len(events)
@@ -700,7 +701,7 @@ class MF_Sampler():
         self.injected_density  = None
         with Pool(self.n_parallel_threads) as p:
             output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
-        #output = self.pool.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
+        #output = [self.compute_score([data_id, cid, state]) for cid in cluster_ids]
         scores = {out[0]: out[1] for out in output}
         self.numerators = {out[0]: out[2] for out in output}
         self.injected_density = saved_injected_density
@@ -716,6 +717,7 @@ class MF_Sampler():
         score += self.log_cluster_assign_score(cid, state)
         score = np.exp(score)
         return [cid, score, logL_N]
+        
         
     def log_cluster_assign_score(self, cluster_id, state):
         """Log-likelihood that a new point generated will
@@ -871,17 +873,17 @@ class MF_Sampler():
         if self.injected_density is not None:
             self.ppplot(p, app)
         
-        name = self.output_events + '/posterior_functions_mf_'
-        extension ='.pkl'
-        x = 0
-        fileName = name + str(x) + extension
-        while not os.path.exists(fileName):
-            x = x + 1
-            fileName = name + str(x) + extension
-        picklefile = open(fileName, 'wb')
-        pickle.dump(self.mixture_samples, picklefile)
-        picklefile.close()
-        
+#        name = self.output_events + '/posterior_functions_mf_'
+#        extension ='.pkl'
+#        x = 0
+#        fileName = name + str(x) + extension
+#        while not os.path.exists(fileName):
+#            x = x + 1
+#            fileName = name + str(x) + extension
+#        picklefile = open(fileName, 'wb')
+#        pickle.dump(self.mixture_samples, picklefile)
+#        picklefile.close()
+#
         if self.diagnostic:
             fig = plt.figure()
             for i, s in enumerate(self.mixture_samples[:25]):
