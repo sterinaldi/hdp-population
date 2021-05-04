@@ -873,17 +873,17 @@ class MF_Sampler():
         if self.injected_density is not None:
             self.ppplot(p, app)
         
-#        name = self.output_events + '/posterior_functions_mf_'
-#        extension ='.pkl'
-#        x = 0
-#        fileName = name + str(x) + extension
-#        while not os.path.exists(fileName):
-#            x = x + 1
-#            fileName = name + str(x) + extension
-#        picklefile = open(fileName, 'wb')
-#        pickle.dump(self.mixture_samples, picklefile)
-#        picklefile.close()
-#
+        name = self.output_events + '/posterior_functions_mf_'
+        extension ='.pkl'
+        x = 0
+        fileName = name + str(x) + extension
+        if not os.path.exists(fileName):
+            x = x + 1
+        fileName = name + str(x) + extension
+        picklefile = open(fileName, 'wb')
+        pickle.dump(self.mixture_samples, picklefile)
+        picklefile.close()
+
         if self.diagnostic:
             fig = plt.figure()
             for i, s in enumerate(self.mixture_samples[:25]):
