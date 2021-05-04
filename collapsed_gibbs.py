@@ -870,6 +870,11 @@ class MF_Sampler():
         plt.savefig(self.output_events + '/log_obs_mass_function.pdf', bbox_inches = 'tight')
         if self.injected_density is not None:
             self.ppplot(p, app)
+            
+        picklefile = open(self.output_events + '/posterior_functions_mf.pkl', 'wb')
+        pickle.dump(self.mixture_samples, picklefile)
+        picklefile.close()
+        
         if self.diagnostic:
             fig = plt.figure()
             for i, s in enumerate(self.mixture_samples[:25]):
