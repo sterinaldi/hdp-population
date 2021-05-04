@@ -870,8 +870,15 @@ class MF_Sampler():
         plt.savefig(self.output_events + '/log_obs_mass_function.pdf', bbox_inches = 'tight')
         if self.injected_density is not None:
             self.ppplot(p, app)
-            
-        picklefile = open(self.output_events + '/posterior_functions_mf.pkl', 'wb')
+        
+        name = self.output_events + '/posterior_functions_mf_'
+        extension ='.pkl'
+        x = 0
+        fileName = name + str(x) + extension
+        while(!os.path.exists(fileName)):
+            x = x + 1
+            fileName = name + str(x) + extension
+        picklefile = open(fileName, 'wb')
         pickle.dump(self.mixture_samples, picklefile)
         picklefile.close()
         
