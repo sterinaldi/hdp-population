@@ -23,8 +23,8 @@ from numba import jit, njit
 from numba import prange
 import ray
 from ray.util import ActorPool
-#from multiprocessing import Pool
-from ray.util.multiprocessing import Pool
+from multiprocessing import Pool
+#from ray.util.multiprocessing import Pool
 
 import pickle
 
@@ -192,7 +192,7 @@ class CGSampler:
         return
     
     def run_mass_function_sampling(self):
-        #ray.shutdown()
+        ray.shutdown()
         self.load_mixtures()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
@@ -649,7 +649,6 @@ class MF_Sampler():
         self.diagnostic = diagnostic
         self.autocorrelation = autocorrelation
         self.n_parallel_threads = n_parallel_threads
-        self.pool = Pool(n_parallel_threads)
         self.alpha_samples = []
         
     def initial_state(self):
@@ -686,7 +685,7 @@ class MF_Sampler():
         return logL_N - logL_D, logL_N
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
-        # spezzare il dominio con ray.get()
+        # spezzare il dominio con ray.get()?
         I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n])
         return np.log(I)
     
@@ -699,7 +698,9 @@ class MF_Sampler():
         # can't pickle injected density
         saved_injected_density = self.injected_density
         self.injected_density  = None
-        output = self.pool.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
+        with Pool(self.n_parallel_threads) as p:
+            output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
+        #output = self.pool.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
         scores = {out[0]: out[1] for out in output}
         self.numerators = {out[0]: out[2] for out in output}
         self.injected_density = saved_injected_density
@@ -987,7 +988,7 @@ def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
 #@ray.remote(num_cpus = 4)
 #def compute_logsumexp(mu, sigma, event):
 #    return my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in event.values()]))
-#
+
 @jit(nopython = True, nogil = True, cache = True)
 def my_logsumexp(a):
     a_max = a.max()
