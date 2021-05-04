@@ -23,7 +23,9 @@ from numba import jit, njit
 from numba import prange
 import ray
 from ray.util import ActorPool
-from multiprocessing import Pool
+#from multiprocessing import Pool
+from ray.util.multiprocessing import Pool
+
 import pickle
 
 
@@ -190,7 +192,7 @@ class CGSampler:
         return
     
     def run_mass_function_sampling(self):
-        ray.shutdown()
+        #ray.shutdown()
         self.load_mixtures()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
@@ -647,6 +649,7 @@ class MF_Sampler():
         self.diagnostic = diagnostic
         self.autocorrelation = autocorrelation
         self.n_parallel_threads = n_parallel_threads
+        self.pool = Pool(n_parallel_threads)
         self.alpha_samples = []
         
     def initial_state(self):
@@ -683,7 +686,8 @@ class MF_Sampler():
         return logL_N - logL_D, logL_N
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
-        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [events, m_min, m_max, sigma_min, sigma_max, n])
+        # spezzare il dominio con ray.get()
+        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n])
         return np.log(I)
     
     def cluster_assignment_distribution(self, data_id, state):
@@ -695,8 +699,7 @@ class MF_Sampler():
         # can't pickle injected density
         saved_injected_density = self.injected_density
         self.injected_density  = None
-        with Pool(self.n_parallel_threads) as p:
-            output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
+        output = self.pool.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
         scores = {out[0]: out[1] for out in output}
         self.numerators = {out[0]: out[2] for out in output}
         self.injected_density = saved_injected_density
@@ -971,14 +974,21 @@ def log_normal_density(x, x0, sigma):
     """
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
     
-@jit(nopython = True)
+@jit(nopython = True, nogil = True, cache = True)
 def log_norm(x, x0, sigma1, sigma2):
     return -((x-x0)**2)/(2*(sigma1**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2)
 
-def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
-    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]) + np.log(m_max - m_min) - (n-1)*np.log(sigma_max-sigma_min))
 
-@jit(nopython = True)
+def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
+    #logs = ray.get([compute_logsumexp.remote(mu, sigma, ev) for ev in events])
+    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]))
+    #return np.exp(np.sum(logs))
+
+#@ray.remote(num_cpus = 4)
+#def compute_logsumexp(mu, sigma, event):
+#    return my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in event.values()]))
+#
+@jit(nopython = True, nogil = True, cache = True)
 def my_logsumexp(a):
     a_max = a.max()
     tmp = np.exp(a - a_max)
@@ -986,3 +996,5 @@ def my_logsumexp(a):
     out = np.log(s)
     out += a_max
     return out
+
+# π ∑ w_k e^(mu - mu_k)^2/sigma
