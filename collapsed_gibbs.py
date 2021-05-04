@@ -875,7 +875,7 @@ class MF_Sampler():
         extension ='.pkl'
         x = 0
         fileName = name + str(x) + extension
-        while(!os.path.exists(fileName)):
+        while not os.path.exists(fileName):
             x = x + 1
             fileName = name + str(x) + extension
         picklefile = open(fileName, 'wb')
