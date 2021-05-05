@@ -7,6 +7,8 @@ import sys
 import importlib.util
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+import pickle
+from scipy.special import logsumexp
 
 
 def is_opt_provided (parser, dest):
@@ -18,6 +20,49 @@ def is_opt_provided (parser, dest):
             if opt.dest == dest and opt._long_opts[0] in sys.argv[1:]:
                 return True
     return False
+
+def log_normal_density(x, x0, sigma):
+    return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
+
+def plot_samples(samples, m_min, m_max, output, injected_density = None, true_masses = None):
+
+        app  = np.linspace(m_min, m_max, 1000)
+        da = app[1]-app[0]
+        percentiles = [50, 5,16, 84, 95]
+        
+        p = {}
+        
+        fig = plt.figure()
+        fig.suptitle('Observed mass function')
+        ax  = fig.add_subplot(111)
+        if true_masses is not None:
+            truths = np.genfromtxt(true_masses, names = True)
+            ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True)
+        prob = []
+        for a in app:
+            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in samples])
+        for perc in percentiles:
+            p[perc] = np.percentile(prob, perc, axis = 1)
+        sample_probs = prob
+        median_mf = np.array(p[50])
+        names = ['m'] + [str(perc) for perc in percentiles]
+        np.savetxt(output+ '/log_joint_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
+        for perc in percentiles:
+            p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
+        
+        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
+        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
+        ax.plot(app, p[50], marker = '', color = 'r')
+        if injected_density is not None:
+            norm = np.sum([injected_density(a)*(app[1]-app[0]) for a in app])
+            density = np.array([injected_density(a)/norm for a in app])
+            ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7)
+        ax.set_xlabel('$M\ [M_\\odot]$')
+        ax.set_ylabel('$p(M)$')
+        plt.savefig(output + '/joint_mass_function.pdf', bbox_inches = 'tight')
+        ax.set_yscale('log')
+        ax.set_ylim(np.min(p[50]))
+        plt.savefig(output + '/log_joint_mass_function.pdf', bbox_inches = 'tight')
 
 def main():
     parser = op.OptionParser()
@@ -47,6 +92,7 @@ def main():
     parser.add_option("--selfunc", dest = "selection_function", help = "Python module with selection function or text file with M_i and S(M_i) for interp1d")
     parser.add_option("--autocorr", dest = "autocorrelation", help = "Compute mass function autocorrelation?", action = 'store_true', default = False)
     parser.add_option("--autocorr_ev", dest = "autocorrelation_ev", help = "Compute single event autocorrelation?", action = 'store_true', default = False)
+    parser.add_option("--join", dest = "join", help = "Join samples from different runs", action = 'store_true', default = False)
     (options, args) = parser.parse_args()
     
     if options.optfile is not None:
@@ -130,11 +176,27 @@ def main():
                               )
         sampler.run()
     
+    if bool(options.join):
+    
+        samples = []
+        pickle_folder = options.output + '/mass_function/'
+        pickle_files  = [pickle_folder + f for f in os.listdir(pickle_folder) if f.startswith('posterior_functions_')]
+        
+        for file in pickle_files:
+            openfile = open(file, 'rb')
+            for d in pickle.load(openfile):
+                samples.append(d)
+            openfile.close()
+        
+        plot_samples(samples = samples, m_min = float(options.mmin), m_max = float(options.mmax), output = pickle_folder, injected_density = filtered_density, true_masses = options.true_masses)
+        
+        
+        
     if options.selection_function is None:
         exit()
     
     app = np.linspace(options.mmin, options.mmax, 1000)
-    obs_mf = np.genfromtxt(options.output + '/mass_function/log_rec_obs_prob_mf.txt', names = True)
+    obs_mf = np.genfromtxt(options.output + '/mass_function/log_rec_obs_prob_mf.txt', names = True, dtype = ("|S10", float, float))
     percentiles = [50, 5, 16, 84, 95]
     dm = obs_mf['m'][1]-obs_mf['m'][0]
     mf = {}
