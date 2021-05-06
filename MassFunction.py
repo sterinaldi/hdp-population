@@ -45,14 +45,16 @@ def plot_samples(samples, m_min, m_max, output, injected_density = None, true_ma
             p[perc] = np.percentile(prob, perc, axis = 1)
         sample_probs = prob
         median_mf = np.array(p[50])
+        norm = np.sum(np.exp(p[50]))*da
+        log_norm = np.log(norm)
         names = ['m'] + [str(perc) for perc in percentiles]
-        np.savetxt(output+ '/log_joint_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
+        np.savetxt(output+ '/log_joint_obs_prob_mf.txt', np.array([app, p[50] - log_norm, p[5] - log_norm, p[16] - log_norm, p[84] - log_norm, p[95] - log_norm]).T, header = ' '.join(names))
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
-        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
-        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
-        ax.plot(app, p[50], marker = '', color = 'r')
+        ax.fill_between(app, p[95]/norm, p[5]/norm, color = 'lightgreen', alpha = 0.5)
+        ax.fill_between(app, p[84]/norm, p[16]/norm, color = 'aqua', alpha = 0.5)
+        ax.plot(app, p[50]/norm, marker = '', color = 'r')
         if injected_density is not None:
             norm = np.sum([injected_density(a)*(app[1]-app[0]) for a in app])
             density = np.array([injected_density(a)/norm for a in app])
