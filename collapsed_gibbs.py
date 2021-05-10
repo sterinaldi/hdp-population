@@ -1014,8 +1014,8 @@ def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
 #@jit(nopython = True, nogil = True, cache = True)
 def my_logsumexp(a):
     a_max = a.max()
-    tmp = np.array([mp.exp(ai - a_max) for ai in a])
-    s = tmp.sum
+    tmp = np.array([float(mp.exp(ai - a_max)) for ai in a])
+    s = tmp.sum()
     out = mp.log(s)
     out += a_max
     return out
