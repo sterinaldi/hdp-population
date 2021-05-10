@@ -835,7 +835,7 @@ class MF_Sampler():
         print('------------------------')
         return
 
-    def postprocess(self):
+    def plot_samples(self):
         """
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
@@ -884,21 +884,12 @@ class MF_Sampler():
         extension ='.pkl'
         x = 0
         fileName = name + str(x) + extension
-        while os.path.exists(fileName):
+        if not os.path.exists(fileName):
             x = x + 1
-            fileName = name + str(x) + extension
+        fileName = name + str(x) + extension
         picklefile = open(fileName, 'wb')
         pickle.dump(self.mixture_samples, picklefile)
         picklefile.close()
-        
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))))
-        fig.savefig(self.output_events+'/gamma_mf.pdf', bbox_inches='tight')
 
         if self.diagnostic:
             fig = plt.figure()
@@ -964,7 +955,15 @@ class MF_Sampler():
         self.output_events = self.output_folder
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
-        self.postprocess()
+        self.plot_samples()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
+        fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))))
+        fig.savefig(self.output_events+'/gamma_mf.pdf', bbox_inches='tight')
         return
 
 
