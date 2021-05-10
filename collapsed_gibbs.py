@@ -1011,7 +1011,7 @@ def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
 #def compute_logsumexp(mu, sigma, event):
 #    return my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in event.values()]))
 
-@jit(nopython = True, nogil = True, cache = True)
+#@jit(nopython = True, nogil = True, cache = True)
 def my_logsumexp(a):
     a_max = a.max()
     tmp = np.exp(a - a_max)
