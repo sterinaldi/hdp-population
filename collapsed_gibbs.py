@@ -16,6 +16,8 @@ from scipy.integrate import dblquad
 
 from sampler_component_pars import sample_point
 
+import mpmath as mp
+
 from time import perf_counter
 from itertools import product
 
@@ -687,12 +689,8 @@ class MF_Sampler():
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
         # spezzare il dominio con ray.get()?
-        mus = np.array([component['mean'] for ev in events for component in ev.values()])
-        mean_mu  = np.mean(mus)
-        sigma_mu = np.std(mus)
-        offset = np.log(integrand(sigma_mu, mean_mu, np.array(events), m_min, m_max, sigma_min, sigma_max, n, 1))
-        print(offset)
-        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n, offset])
+        #I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n])
+        I, dI = mp.quad(lambda: np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + mp.npdf(mu, component['mean'], component['sigma'])  for component in ev.values()])) for ev in events])))
         print(I)
         if (I > 0.0 and np.isfinite(I)):
             return offset + np.log(I)
@@ -1004,9 +1002,9 @@ def log_norm(x, x0, sigma1, sigma2):
     return -((x-x0)**2)/(2*(sigma1**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2)
 
 
-def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n, offset):
+def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
     #logs = ray.get([compute_logsumexp.remote(mu, sigma, ev) for ev in events])
-    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]) - n*offset)
+    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]))
     #return np.exp(np.sum(logs))
 
 #@ray.remote(num_cpus = 4)
