@@ -16,8 +16,6 @@ from scipy.integrate import dblquad
 
 from sampler_component_pars import sample_point
 
-import mpmath as mp
-
 from time import perf_counter
 from itertools import product
 
@@ -689,13 +687,8 @@ class MF_Sampler():
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
         # spezzare il dominio con ray.get()?
-        #I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n])
-        I = mp.quad(lambda mu, sigma: mp.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + mp.npdf(mu, component['mean'], component['sigma'])  for component in ev.values()])) for ev in events])), [m_min, m_max], [sigma_min, sigma_max], error = False)
-        print(I)
-        if (I > 0.0 and np.isfinite(I)):
-            return offset + np.log(I)
-        else:
-            return -np.inf
+        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n])
+        return np.log(I)
     
     def cluster_assignment_distribution(self, data_id, state):
         """
@@ -835,7 +828,7 @@ class MF_Sampler():
         print('------------------------')
         return
 
-    def plot_samples(self):
+    def postprocess(self):
         """
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
@@ -884,12 +877,21 @@ class MF_Sampler():
         extension ='.pkl'
         x = 0
         fileName = name + str(x) + extension
-        if not os.path.exists(fileName):
+        while os.path.exists(fileName):
             x = x + 1
-        fileName = name + str(x) + extension
+            fileName = name + str(x) + extension
         picklefile = open(fileName, 'wb')
         pickle.dump(self.mixture_samples, picklefile)
         picklefile.close()
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
+        fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))))
+        fig.savefig(self.output_events+'/gamma_mf.pdf', bbox_inches='tight')
 
         if self.diagnostic:
             fig = plt.figure()
@@ -955,15 +957,7 @@ class MF_Sampler():
         self.output_events = self.output_folder
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
-        self.plot_samples()
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
-        fig.savefig(self.output_events+'n_clusters_mf.pdf', bbox_inches='tight')
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))))
-        fig.savefig(self.output_events+'/gamma_mf.pdf', bbox_inches='tight')
+        self.postprocess()
         return
 
 
@@ -1003,19 +997,19 @@ def log_norm(x, x0, sigma1, sigma2):
 
 def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
     #logs = ray.get([compute_logsumexp.remote(mu, sigma, ev) for ev in events])
-    return mp.exp(np.sum([my_logsumexp(np.array([mp.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]))
+    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]))
     #return np.exp(np.sum(logs))
 
 #@ray.remote(num_cpus = 4)
 #def compute_logsumexp(mu, sigma, event):
 #    return my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in event.values()]))
 
-#@jit(nopython = True, nogil = True, cache = True)
+@jit(nopython = True, nogil = True, cache = True)
 def my_logsumexp(a):
     a_max = a.max()
-    tmp = np.array([float(mp.exp(ai - a_max)) for ai in a])
-    s = tmp.sum()
-    out = mp.log(s)
+    tmp = np.exp(a - a_max)
+    s = np.sum(tmp)
+    out = np.log(s)
     out += a_max
     return out
 
