@@ -687,8 +687,15 @@ class MF_Sampler():
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
         # spezzare il dominio con ray.get()?
-        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n])
-        return np.log(I)
+        mus = np.array([component['mean'] for ev in events for component in ev])
+        mean_mu  = np.mean(mus)
+        sigma_mu = np.std(mus)
+        offset = np.log(integrand(sigma_mu, mean_mu, np.array(events), m_min, m_max, sigma_min, sigma_max, n, 1))
+        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n, offset])
+        if (I > 0.0 and np.isfinite(I)):
+            return offset + np.log(I)
+        else:
+            return -np.inf
     
     def cluster_assignment_distribution(self, data_id, state):
         """
@@ -995,9 +1002,9 @@ def log_norm(x, x0, sigma1, sigma2):
     return -((x-x0)**2)/(2*(sigma1**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2)
 
 
-def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
+def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n, offset):
     #logs = ray.get([compute_logsumexp.remote(mu, sigma, ev) for ev in events])
-    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]))
+    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]) - offset)
     #return np.exp(np.sum(logs))
 
 #@ray.remote(num_cpus = 4)
