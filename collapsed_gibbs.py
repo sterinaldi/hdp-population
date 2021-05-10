@@ -690,7 +690,7 @@ class MF_Sampler():
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
         # spezzare il dominio con ray.get()?
         #I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n])
-        I, dI = mp.quad(lambda mu, sigma: mp.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + mp.npdf(mu, component['mean'], component['sigma'])  for component in ev.values()])) for ev in events])), [m_min, m_max], [sigma_min, sigma_max])
+        I = mp.quad(lambda mu, sigma: mp.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + mp.npdf(mu, component['mean'], component['sigma'])  for component in ev.values()])) for ev in events])), [m_min, m_max], [sigma_min, sigma_max], error = False)
         print(I)
         if (I > 0.0 and np.isfinite(I)):
             return offset + np.log(I)
