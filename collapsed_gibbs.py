@@ -691,6 +691,7 @@ class MF_Sampler():
         mean_mu  = np.mean(mus)
         sigma_mu = np.std(mus)
         offset = np.log(integrand(sigma_mu, mean_mu, np.array(events), m_min, m_max, sigma_min, sigma_max, n, 1))
+        print(offset)
         I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n, offset])
         print(I)
         if (I > 0.0 and np.isfinite(I)):
