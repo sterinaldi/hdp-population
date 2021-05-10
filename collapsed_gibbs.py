@@ -1006,7 +1006,7 @@ def log_norm(x, x0, sigma1, sigma2):
 
 def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n, offset):
     #logs = ray.get([compute_logsumexp.remote(mu, sigma, ev) for ev in events])
-    print(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]))
+    print(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]), offset)
     return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]) - offset)
     #return np.exp(np.sum(logs))
 
