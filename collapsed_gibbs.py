@@ -687,11 +687,12 @@ class MF_Sampler():
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
         # spezzare il dominio con ray.get()?
-        mus = np.array([component['mean'] for ev in events for component in ev])
+        mus = np.array([component['mean'] for ev in events for component in ev.values()])
         mean_mu  = np.mean(mus)
         sigma_mu = np.std(mus)
         offset = np.log(integrand(sigma_mu, mean_mu, np.array(events), m_min, m_max, sigma_min, sigma_max, n, 1))
         I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n, offset])
+        print(I)
         if (I > 0.0 and np.isfinite(I)):
             return offset + np.log(I)
         else:
