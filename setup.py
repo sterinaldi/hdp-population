@@ -17,8 +17,8 @@ class build_ext(_build_ext):
         self.include_dirs.append(numpy.get_include())
 
 ext_modules=[
-             Extension("predictive",
-                       sources=["predictive.pyx"],
+             Extension("utils",
+                       sources=["utils.pyx"],
                        libraries=["m"], # Unix-like specific
                        extra_compile_args=["-O3","-ffast-math"],
                        include_dirs=[numpy.get_include()]
@@ -26,7 +26,7 @@ ext_modules=[
              ]
 
 setup(
-      name = "predictive",
+      name = "utils",
       ext_modules = cythonize(ext_modules, language_level = "3"),
       include_dirs=[numpy.get_include()]
       )
