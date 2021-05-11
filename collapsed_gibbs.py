@@ -6,6 +6,7 @@ import warnings
 
 from collections import namedtuple, Counter
 from numpy import random
+from functools import reduce
 
 from scipy import stats
 from scipy.stats import t as student_t
@@ -669,8 +670,8 @@ class MF_Sampler():
         for cid in state['cluster_ids_']:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cid]]
             n = len(events)
-            state['logL_D'][cid] = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n)
-        state['logL_D']["new"] = self.log_numerical_predictive([], self.m_min, self.m_max, 0.1, self.sigma_max, 0)
+            state['logL_D'][cid] = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max)
+        state['logL_D']["new"] = self.log_numerical_predictive([], self.m_min, self.m_max, 0.1, self.sigma_max)
         return state
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
@@ -682,12 +683,12 @@ class MF_Sampler():
         n = len(events)
         events.append(self.posterior_draws[data_id])
         logL_D = state['logL_D'][cluster_id] #denominator
-        logL_N = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n+1) #numerator
+        logL_N = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max) #numerator
         return logL_N - logL_D, logL_N
 
-    def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max, n):
+    def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max):
         # spezzare il dominio con ray.get()?
-        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max, n])
+        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max])
         return np.log(I)
     
     def cluster_assignment_distribution(self, data_id, state):
@@ -774,7 +775,7 @@ class MF_Sampler():
         state['ev_in_cl'][cid].remove(data_id)
         events = [self.posterior_draws[i] for i in state['ev_in_cl'][cid]]
         n = len(events)
-        state['logL_D'][cid] = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max, n)
+        state['logL_D'][cid] = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max)
 
     def add_to_cluster(self, state, data_id, cid):
         state['ev_in_cl'][cid].append(data_id)
@@ -957,7 +958,7 @@ class MF_Sampler():
         self.output_events = self.output_folder
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
-        self.postprocess()
+        #self.postprocess()
         return
 
 
@@ -974,7 +975,6 @@ class MF_Sampler():
             self.sample_mixture_parameters(self.state)
         print('\n', end = '')
         return
-        
 
 def log_normal_density(x, x0, sigma):
     """
@@ -991,18 +991,17 @@ def log_normal_density(x, x0, sigma):
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
     
 @jit(nopython = True, nogil = True, cache = True)
-def log_norm(x, x0, sigma1, sigma2):
-    return -((x-x0)**2)/(2*(sigma1**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma1**2)
+def log_norm(x, x0, sigma):
+    return -((x-x0)**2)/(2*(sigma**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma**2)
 
 
-def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max, n):
-    #logs = ray.get([compute_logsumexp.remote(mu, sigma, ev) for ev in events])
-    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in ev.values()])) for ev in events]))
-    #return np.exp(np.sum(logs))
+def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max):
+    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma) for component in ev.values()])) for ev in events]))
 
 #@ray.remote(num_cpus = 4)
 #def compute_logsumexp(mu, sigma, event):
 #    return my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in event.values()]))
+
 
 @jit(nopython = True, nogil = True, cache = True)
 def my_logsumexp(a):
