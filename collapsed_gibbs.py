@@ -688,7 +688,6 @@ class MF_Sampler():
         return logL_N - logL_D, logL_N
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max):
-        # spezzare il dominio con ray.get()?
         I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [events, m_min, m_max, sigma_min, sigma_max])
         return np.log(I)
     
@@ -703,7 +702,6 @@ class MF_Sampler():
         self.injected_density  = None
         with Pool(self.n_parallel_threads) as p:
             output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
-        #output = [self.compute_score([data_id, cid, state]) for cid in cluster_ids]
         scores = {out[0]: out[1] for out in output}
         self.numerators = {out[0]: out[2] for out in output}
         self.injected_density = saved_injected_density
@@ -959,7 +957,7 @@ class MF_Sampler():
         self.output_events = self.output_folder
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
-        #self.postprocess()
+        self.postprocess()
         return
 
 
@@ -998,11 +996,6 @@ def log_normal_density(x, x0, sigma):
 #
 #def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max):
 #    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma) for component in ev.values()])) for ev in events]))
-#
-##@ray.remote(num_cpus = 4)
-##def compute_logsumexp(mu, sigma, event):
-##    return my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in event.values()]))
-#
 #
 #@jit(nopython = True, nogil = True, cache = True)
 #def my_logsumexp(a):
