@@ -25,7 +25,8 @@ from numba import prange
 import ray
 from ray.util import ActorPool
 from multiprocessing import Pool
-#from ray.util.multiprocessing import Pool
+
+from utils import integrand
 
 import pickle
 
@@ -688,7 +689,7 @@ class MF_Sampler():
 
     def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max):
         # spezzare il dominio con ray.get()?
-        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [np.array(events), m_min, m_max, sigma_min, sigma_max])
+        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [events, m_min, m_max, sigma_min, sigma_max])
         return np.log(I)
     
     def cluster_assignment_distribution(self, data_id, state):
@@ -990,26 +991,26 @@ def log_normal_density(x, x0, sigma):
     """
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
     
-@jit(nopython = True, nogil = True, cache = True)
-def log_norm(x, x0, sigma):
-    return -((x-x0)**2)/(2*(sigma**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma**2)
-
-
-def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max):
-    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma) for component in ev.values()])) for ev in events]))
-
-#@ray.remote(num_cpus = 4)
-#def compute_logsumexp(mu, sigma, event):
-#    return my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in event.values()]))
-
-
-@jit(nopython = True, nogil = True, cache = True)
-def my_logsumexp(a):
-    a_max = a.max()
-    tmp = np.exp(a - a_max)
-    s = np.sum(tmp)
-    out = np.log(s)
-    out += a_max
-    return out
+#@jit(nopython = True, nogil = True, cache = True)
+#def log_norm(x, x0, sigma):
+#    return -((x-x0)**2)/(2*(sigma**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma**2)
+#
+#
+#def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max):
+#    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma) for component in ev.values()])) for ev in events]))
+#
+##@ray.remote(num_cpus = 4)
+##def compute_logsumexp(mu, sigma, event):
+##    return my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma, component['sigma'])  for component in event.values()]))
+#
+#
+#@jit(nopython = True, nogil = True, cache = True)
+#def my_logsumexp(a):
+#    a_max = a.max()
+#    tmp = np.exp(a - a_max)
+#    s = np.sum(tmp)
+#    out = np.log(s)
+#    out += a_max
+#    return out
 
 # π ∑ w_k e^(mu - mu_k)^2/sigma
