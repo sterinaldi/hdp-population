@@ -11,9 +11,8 @@ cdef inline double log_add(double x, double y) nogil: return x+log(1.0+exp(y-x))
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-cdef double _log_norm(double x, double x0, double sigma) nogil:
-    cdef double s2 = sigma**2
-    return -((x-x0)**2)/(2*s2) - LOGSQRT2 - log(sigma)
+cdef inline double _log_norm(double x, double x0, double sigma) nogil:
+    return -((x-x0)**2)/(2*sigma*sigma) - LOGSQRT2 - log(sigma)
 
 def log_norm(double x, double x0, double sigma):
     return _log_norm(x, x0, sigma)
