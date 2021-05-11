@@ -30,8 +30,6 @@ cdef inline double _log_prob_component(double mu, double mean, double sigma, dou
 @cython.nonecheck(False)
 @cython.cdivision(True)
 cdef double _log_prob_mixture(double mu, double sigma, dict ev):
-    cdef int i
-    cdef int n = len(ev.values)
     cdef double logP = -HUGE_VAL
     cdef dict component
     for component in ev.values():
@@ -49,7 +47,7 @@ cdef double _integrand(double mu, double sigma, list events):
         logprob += _log_prob_mixture(mu, sigma, ev)
     return exp(logprob)
 
-def integrand(double sigma,double mu,double events,double m_min,double m_max,double sigma_min,double sigma_max):
+def integrand(double sigma,double mu, list events, double m_min, double m_max, double sigma_min, double sigma_max):
     return _integrand(mu, sigma, events)
 
 
