@@ -136,7 +136,6 @@ class CGSampler:
             self.names = [str(i+1) for i in range(len(self.events))]
         self.autocorrelation = autocorrelation
         self.autocorrelation_ev = autocorrelation_ev
-        ray.init(ignore_reinit_error=True, log_to_driver=False)
         
     def initialise_samplers(self, marker):
         event_samplers = []
@@ -162,6 +161,7 @@ class CGSampler:
         return event_samplers
         
     def run_event_sampling(self):
+        ray.init(ignore_reinit_error=True, log_to_driver=False)
         i = 0
         self.posterior_functions_events = []
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
@@ -171,6 +171,7 @@ class CGSampler:
                 self.posterior_functions_events.append(s)
                 i += 1
                 print('\rProcessed {0}/{1} events\r'.format(i, len(self.events)), end = '')
+        ray.shutdown()
         return
     
     def load_mixtures(self):
@@ -194,7 +195,6 @@ class CGSampler:
         return
     
     def run_mass_function_sampling(self):
-        ray.shutdown()
         self.load_mixtures()
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
