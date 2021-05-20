@@ -419,12 +419,11 @@ class Sampler_SE:
         n     = state['Ntot']
         K     = len(state['cluster_ids_'])
         for _ in range(trimming):
-            a_new = a_old + random.RandomState().uniform(-1,1)*0.5#random.RandomState().gamma(1)
-            if a_new > 0:
-                logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
-                logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
-                if logP_new - logP_old > np.log(random.uniform()):
-                    a_old = a_new
+            a_new = random.RandomState().gamma(1)
+            logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
+            logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
+            if logP_new - logP_old > np.log(random.uniform()):
+                a_old = a_new
         return a_old
 
     def gibbs_step(self, state):
@@ -509,9 +508,6 @@ class Sampler_SE:
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
-        names = ['m'] + [str(perc) for perc in percentiles]
-        np.savetxt(self.output_events + '/rec_prob/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
-        
         prob = np.array(prob)
         
         ent = []
@@ -532,6 +528,7 @@ class Sampler_SE:
         ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
         ax.plot(app, p[50], marker = '', color = 'r')
+        np.savetxt(self.output_recprob + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, np.log(p[50])]).T)
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         ax.set_xlim(min(self.mass_samples)-5, max(self.mass_samples)+5)
@@ -787,12 +784,11 @@ class MF_Sampler():
         n     = state['Ntot']
         K     = len(state['cluster_ids_'])
         for _ in range(trimming):
-            a_new = a_old + random.RandomState().uniform(-1,1)*0.5#random.RandomState().gamma(1)
-            if a_new > 0:
-                logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
-                logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
-                if logP_new - logP_old > np.log(random.uniform()):
-                    a_old = a_new
+            a_new = random.RandomState().gamma(1)
+            logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
+            logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
+            if logP_new - logP_old > np.log(random.uniform()):
+                a_old = a_new
         return a_old
     
     def gibbs_step(self, state):
