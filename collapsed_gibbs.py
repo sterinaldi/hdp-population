@@ -509,6 +509,9 @@ class Sampler_SE:
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
+        names = ['m'] + [str(perc) for perc in percentiles]
+        np.savetxt(self.output_events + '/rec_prob/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
+        
         prob = np.array(prob)
         
         ent = []
@@ -529,8 +532,6 @@ class Sampler_SE:
         ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
         ax.plot(app, p[50], marker = '', color = 'r')
-        names = ['m'] + [str(perc) for perc in percentiles]
-        np.savetxt(self.output_events + '/rec_prob/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         ax.set_xlim(min(self.mass_samples)-5, max(self.mass_samples)+5)
