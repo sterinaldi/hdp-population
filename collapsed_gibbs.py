@@ -419,7 +419,7 @@ class Sampler_SE:
         n     = state['Ntot']
         K     = len(state['cluster_ids_'])
         for _ in range(trimming):
-            a_new = a_old + uniform(-1,1)*0.5#random.RandomState().gamma(1)
+            a_new = a_old + random.RandomState().uniform(-1,1)*0.5#random.RandomState().gamma(1)
             if a_new > 0:
                 logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
                 logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
@@ -786,7 +786,7 @@ class MF_Sampler():
         n     = state['Ntot']
         K     = len(state['cluster_ids_'])
         for _ in range(trimming):
-            a_new = a_old + uniform(-1,1)*0.5#random.RandomState().gamma(1)
+            a_new = a_old + random.RandomState().uniform(-1,1)*0.5#random.RandomState().gamma(1)
             if a_new > 0:
                 logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
                 logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
