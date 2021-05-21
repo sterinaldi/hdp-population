@@ -153,7 +153,8 @@ class CGSampler:
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
-                                            False,
+                                            #False,
+                                            True,
                                             self.icn,
                                             self.sigma_max_ev,
                                             self.autocorrelation_ev
@@ -161,7 +162,7 @@ class CGSampler:
         return event_samplers
         
     def run_event_sampling(self):
-        ray.init(ignore_reinit_error=True, log_to_driver=False)
+        ray.init(ignore_reinit_error=True)#, log_to_driver=False)
         i = 0
         self.posterior_functions_events = []
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
@@ -419,11 +420,12 @@ class Sampler_SE:
         n     = state['Ntot']
         K     = len(state['cluster_ids_'])
         for _ in range(trimming):
-            a_new = random.RandomState().gamma(1)
-            logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
-            logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
-            if logP_new - logP_old > np.log(random.uniform()):
-                a_old = a_new
+            a_new = a_old + random.RandomState().uniform(-1,1)*0.5#.gamma(1)
+            if a_new > 0:
+                logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
+                logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
+                if logP_new - logP_old > np.log(random.uniform()):
+                    a_old = a_new
         return a_old
 
     def gibbs_step(self, state):
@@ -508,7 +510,7 @@ class Sampler_SE:
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
         names = ['m'] + [str(perc) for perc in percentiles]
-        np.savetxt(self.output_recprob + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
+        np.savetxt(self.output_recprob + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[5], p[16], p[50], p[84], p[95]]).T, header = ' '.join(names))
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
@@ -787,11 +789,12 @@ class MF_Sampler():
         n     = state['Ntot']
         K     = len(state['cluster_ids_'])
         for _ in range(trimming):
-            a_new = random.RandomState().gamma(1)
-            logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
-            logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
-            if logP_new - logP_old > np.log(random.uniform()):
-                a_old = a_new
+            a_new = a_old + random.RandomState().uniform(-1,1)*0.5#.gamma(1)
+            if a_new > 0:
+                logP_old = gammaln(a_old) - gammaln(a_old + n) + K * np.log(a_old)
+                logP_new = gammaln(a_new) - gammaln(a_new + n) + K * np.log(a_new)
+                if logP_new - logP_old > np.log(random.uniform()):
+                    a_old = a_new
         return a_old
     
     def gibbs_step(self, state):
