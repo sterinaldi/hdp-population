@@ -506,6 +506,10 @@ class Sampler_SE:
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
         for perc in percentiles:
+            p[perc] = np.percentile(prob, perc, axis = 1)
+        names = ['m'] + [str(perc) for perc in percentiles]
+        np.savetxt(self.output_recprob + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
+        for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
         prob = np.array(prob)
@@ -528,7 +532,6 @@ class Sampler_SE:
         ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
         ax.plot(app, p[50], marker = '', color = 'r')
-        np.savetxt(self.output_recprob + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, np.log(p[50])]).T)
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         ax.set_xlim(min(self.mass_samples)-5, max(self.mass_samples)+5)
