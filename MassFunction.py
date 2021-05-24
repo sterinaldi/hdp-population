@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import pickle
 from scipy.special import logsumexp
+from scipy.stats import entropy
 
 
 def is_opt_provided (parser, dest):
@@ -59,6 +60,10 @@ def plot_samples(samples, m_min, m_max, output, injected_density = None, true_ma
             norm = np.sum([injected_density(a)*(app[1]-app[0]) for a in app])
             density = np.array([injected_density(a)/norm for a in app])
             ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7)
+            ent = entropy(p[50]/norm, density)
+            print('Relative entropy (Kullback-Leiden divergence): {0} nats'.format(ent))
+            np.savetxt(output + '/joint_relative_entropy.txt', np.array([ent]))
+            
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(output + '/joint_mass_function.pdf', bbox_inches = 'tight')
