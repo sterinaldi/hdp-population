@@ -38,7 +38,7 @@ def plot_samples(samples, m_min, m_max, output, injected_density = None, true_ma
         ax  = fig.add_subplot(111)
         if true_masses is not None:
             truths = np.genfromtxt(true_masses, names = True)
-            ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True, label = '$Simulated masses$')
+            ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True, label = '$Masses$')
         prob = []
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in samples])
