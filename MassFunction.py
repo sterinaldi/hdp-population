@@ -38,7 +38,7 @@ def plot_samples(samples, m_min, m_max, output, injected_density = None, true_ma
         ax  = fig.add_subplot(111)
         if true_masses is not None:
             truths = np.genfromtxt(true_masses, names = True)
-            ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True)
+            ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True, label = '$Simulated masses$')
         prob = []
         for a in app:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in samples])
@@ -53,17 +53,18 @@ def plot_samples(samples, m_min, m_max, output, injected_density = None, true_ma
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         
-        ax.fill_between(app, p[95]/norm, p[5]/norm, color = 'lightgreen', alpha = 0.5)
-        ax.fill_between(app, p[84]/norm, p[16]/norm, color = 'aqua', alpha = 0.5)
-        ax.plot(app, p[50]/norm, marker = '', color = 'r')
+        ax.fill_between(app, p[95]/norm, p[5]/norm, color = 'lightgreen', alpha = 0.5, label = '$90\%\ CI$')
+        ax.fill_between(app, p[84]/norm, p[16]/norm, color = 'aqua', alpha = 0.5, label = '$68\%\ CI$')
+        ax.plot(app, p[50]/norm, marker = '', color = 'r', label = '$Reconstructed$')
         if injected_density is not None:
             norm = np.sum([injected_density(a)*(app[1]-app[0]) for a in app])
             density = np.array([injected_density(a)/norm for a in app])
-            ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7)
+            ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7, label = '$Simulated$')
             ent = entropy(p[50]/norm, density)
             print('Relative entropy (Kullback-Leiden divergence): {0} nats'.format(ent))
             np.savetxt(output + '/joint_relative_entropy.txt', np.array([ent]))
-            
+        
+        plt.legend(loc = 0)
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
         plt.savefig(output + '/joint_mass_function.pdf', bbox_inches = 'tight')
