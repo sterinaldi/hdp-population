@@ -153,8 +153,7 @@ class CGSampler:
                                             self.m_min,
                                             self.m_max,
                                             self.output_folder,
-                                            #False,
-                                            True,
+                                            False,
                                             self.icn,
                                             self.sigma_max_ev,
                                             self.autocorrelation_ev
@@ -162,7 +161,7 @@ class CGSampler:
         return event_samplers
         
     def run_event_sampling(self):
-        ray.init(ignore_reinit_error=True)#, log_to_driver=False)
+        ray.init(ignore_reinit_error=True, log_to_driver=False)
         i = 0
         self.posterior_functions_events = []
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
@@ -948,7 +947,7 @@ class MF_Sampler():
         
         rec_median = np.array([f50(ai) for ai in a])
         inj = np.array([self.injected_density(ai)/norm for ai in a])
-        ent = entropy(inj,rec_median)
+        ent = entropy(rec_median, inj)
         print('Relative entropy (Kullback-Leiden divergence): {0} nats'.format(ent))
         np.savetxt(self.output_events + '/relative_entropy.txt', np.array([ent]))
         
@@ -958,14 +957,18 @@ class MF_Sampler():
         Runs sampler, saves samples and produces output plots.
         """
 
-        self.run_sampling()
         # reconstructed events
         self.output_events = self.output_folder
         if not os.path.exists(self.output_events):
             os.mkdir(self.output_events)
+        self.run_sampling()
         self.postprocess()
         return
 
+    def checkpoint(self):
+        picklefile = open(self.output_events + '/checkpoint.pkl', 'wb')
+        pickle.dump(self.mixture_samples, picklefile)
+        picklefile.close()
 
     def run_sampling(self):
         self.state = self.initial_state()
@@ -978,6 +981,8 @@ class MF_Sampler():
             for _ in range(self.step):
                 self.gibbs_step(self.state)
             self.sample_mixture_parameters(self.state)
+            if (i+1) % 5 == 0:
+                self.checkpoint()
         print('\n', end = '')
         return
 
