@@ -973,6 +973,8 @@ class MF_Sampler():
             picklefile = open(self.output_events + '/checkpoint.pkl', 'rb')
             samps = pickle.load(picklefile)
             picklefile.close()
+        except:
+            pass
         
         samps = samps + self.mixture_samples[-self.ncheck:]
         picklefile = open(self.output_events + '/checkpoint.pkl', 'wb')
