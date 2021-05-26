@@ -11,6 +11,7 @@ from functools import reduce
 from scipy import stats
 from scipy.stats import t as student_t
 from scipy.stats import entropy, gamma
+from scipy.spatial.distance import jensenshannon as js
 from scipy.special import logsumexp, betaln, gammaln
 from scipy.interpolate import interp1d
 from scipy.integrate import dblquad
@@ -519,9 +520,9 @@ class Sampler_SE:
         
         for i in range(np.shape(prob)[1]):
             sample = np.exp(prob[:,i])
-            ent.append(entropy(sample,p[50]))
+            ent.append(js(sample,p[50]))
         mean_ent = np.mean(ent)
-        np.savetxt(self.output_entropy + '/KLdiv_{0}.txt'.format(self.e_ID), np.array(ent), header = 'mean entropy = {0}'.format(mean_ent))
+        np.savetxt(self.output_entropy + '/KLdiv_{0}.txt'.format(self.e_ID), np.array(ent), header = 'mean JS distance = {0}'.format(mean_ent))
         
         picklefile = open(self.output_pickle + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
         pickle.dump(self.mixture_samples, picklefile)
@@ -949,8 +950,8 @@ class MF_Sampler():
         
         rec_median = np.array([f50(ai) for ai in a])
         inj = np.array([self.injected_density(ai)/norm for ai in a])
-        ent = entropy(rec_median, inj)
-        print('Relative entropy (Kullback-Leiden divergence): {0} nats'.format(ent))
+        ent = js(rec_median, inj)
+        print('Jensen-Shannon distance: {0} nats'.format(ent))
         np.savetxt(self.output_events + '/relative_entropy.txt', np.array([ent]))
         
     
