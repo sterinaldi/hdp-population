@@ -161,7 +161,7 @@ class CGSampler:
         return event_samplers
         
     def run_event_sampling(self):
-        ray.init(ignore_reinit_error=True, log_to_driver=False)
+        ray.init(ignore_reinit_error=True, log_to_driver=False, num_cpus = self.n_parallel_threads)
         i = 0
         self.posterior_functions_events = []
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
