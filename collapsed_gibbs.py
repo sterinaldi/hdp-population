@@ -628,7 +628,8 @@ class MF_Sampler():
                        sigma_max = 5,
                        m_max_plot = 50,
                        autocorrelation = False,
-                       n_parallel_threads = 1
+                       n_parallel_threads = 1,
+                       ncheck = 5
                        ):
                        
         self.burnin  = burnin
@@ -656,6 +657,7 @@ class MF_Sampler():
         self.autocorrelation = autocorrelation
         self.n_parallel_threads = n_parallel_threads
         self.alpha_samples = []
+        self.ncheck = ncheck
         
     def initial_state(self):
         self.update_draws()
@@ -966,8 +968,15 @@ class MF_Sampler():
         return
 
     def checkpoint(self):
+        samps = []
+        try:
+            picklefile = open(self.output_events + '/checkpoint.pkl', 'rb')
+            samps = pickle.load(picklefile)
+            picklefile.close()
+        
+        samps = samps + self.mixture_samples[-self.ncheck:]
         picklefile = open(self.output_events + '/checkpoint.pkl', 'wb')
-        pickle.dump(self.mixture_samples, picklefile)
+        pickle.dump(samps, picklefile)
         picklefile.close()
 
     def run_sampling(self):
@@ -981,7 +990,7 @@ class MF_Sampler():
             for _ in range(self.step):
                 self.gibbs_step(self.state)
             self.sample_mixture_parameters(self.state)
-            if (i+1) % 5 == 0:
+            if (i+1) % self.ncheck == 0:
                 self.checkpoint()
         print('\n', end = '')
         return
