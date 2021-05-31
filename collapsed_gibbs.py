@@ -28,8 +28,7 @@ from ray.util import ActorPool
 from multiprocessing import Pool
 
 # See https://pythonspeed.com/articles/python-multiprocessing/
-from multiprocessing import set_start_method
-set_start_method("spawn")
+from multiprocessing import get_context
 
 from utils import integrand
 
