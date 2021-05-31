@@ -195,8 +195,14 @@ def main():
             for d in pickle.load(openfile):
                 samples.append(d)
             openfile.close()
+        samples_set = []
+        for s in samples:
+            if not s in samples_set:
+                samples_set.append(s)
         
-        plot_samples(samples = samples, m_min = float(options.mmin), m_max = float(options.mmax), output = pickle_folder, injected_density = filtered_density, true_masses = options.true_masses)
+        print('{0} MF samples'.format(len(samples_set)))
+
+        plot_samples(samples = samples_set, m_min = float(options.mmin), m_max = float(options.mmax), output = pickle_folder, injected_density = filtered_density, true_masses = options.true_masses)
         
         
         
