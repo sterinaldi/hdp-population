@@ -25,7 +25,8 @@ from numba import jit, njit
 from numba import prange
 import ray
 from ray.util import ActorPool
-from multiprocessing import Pool
+#from multiprocessing import Pool
+from ray.util.multiprocessing import Pool
 
 # See https://pythonspeed.com/articles/python-multiprocessing/
 from multiprocessing import get_context
@@ -171,6 +172,7 @@ class CGSampler:
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
             tasks = self.initialise_samplers(n*self.n_parallel_threads)
             pool = ActorPool(tasks)
+            #guardare ray.wait
             for s in pool.map(lambda a, v: a.run.remote(), range(len(tasks))):
                 self.posterior_functions_events.append(s)
                 i += 1
@@ -663,6 +665,8 @@ class MF_Sampler():
         self.alpha_samples = []
         self.ncheck = ncheck
         
+        self.p = Pool(n_parallel_threads)
+        
     def initial_state(self):
         self.update_draws()
         assign = [int(a//(len(self.posterior_functions_events)/int(self.icn))) for a in range(len(self.posterior_functions_events))]
@@ -710,8 +714,8 @@ class MF_Sampler():
         # can't pickle injected density
         saved_injected_density = self.injected_density
         self.injected_density  = None
-        with Pool(self.n_parallel_threads) as p:
-            output = p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
+#        with Pool(self.n_parallel_threads) as p:
+        output = self.p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
         scores = {out[0]: out[1] for out in output}
         self.numerators = {out[0]: out[2] for out in output}
         self.injected_density = saved_injected_density
