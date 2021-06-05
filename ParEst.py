@@ -50,7 +50,7 @@ class DirichletDistribution(cpnest.model.Model):
     
         logP = super(DirichletDistribution,self).log_prior(x)
         if np.isfinite(logP):
-            logP = gamma(1,1).logpdf(x['a'])
+            logP = 0.
             pars = [x[lab] for lab in self.names[:-1]]
             logP += self.prior_pars(*pars)
         return logP
