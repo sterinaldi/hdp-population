@@ -44,7 +44,7 @@ class DirichletDistribution(cpnest.model.Model):
                         p[i] = log_add(p[i], logW + log_norm(mi, mu, s))
                     p = p + np.log(self.dm) - logsumexp(p+np.log(self.dm))
                 probs.append(p)
-        self.probs = np.log(np.array(probs))
+        self.probs = np.array(probs)
     
     def log_prior(self, x):
     
@@ -61,10 +61,9 @@ class DirichletDistribution(cpnest.model.Model):
         base = np.array([self.model(mi, *pars)*self.dm for mi in self.m])
         base = base/np.sum(base)
         a = x['a']*base
-        logL = self.n * (numba_gammaln(np.sum(a)) - np.sum([numba_gammaln(ai) for ai in a]))
-        for p in self.probs:
-            logL += np.sum((a - 1)*p) #scipy.stats.dirichlet implementation w/o checks
-        
+        #implemented as in scipy.stats.dirichlet.logpdf() w/o checks
+        lnB = np.sum(gammaln(a)) - gammaln(np.sum(a))
+        logL = np.sum([- lnB + np.sum((xlogy(a-1, p.T)).T, 0) for p in self.probs])
         return logL
 
 @njit
