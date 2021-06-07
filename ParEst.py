@@ -62,7 +62,7 @@ class DirichletDistribution(cpnest.model.Model):
         base = base/np.sum(base)
         a = x['a']*base
         #implemented as in scipy.stats.dirichlet.logpdf() w/o checks
-        lnB = np.sum(gammaln(a)) - gammaln(np.sum(a))
+        lnB = np.sum([numba_gammaln(ai) for ai in a]) - numba_gammaln(np.sum(a))
         logL = np.sum([- lnB + np.sum((xlogy(a-1, p.T)).T, 0) for p in self.probs])
         return logL
 
