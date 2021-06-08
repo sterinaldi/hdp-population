@@ -81,9 +81,9 @@ class DirichletProcess(cpnest.model.Model):
         return logP
 
     def log_likelihood(self, x):
-        N = int(x['N'])
-        self.m          = np.linspace(self.x_min, self.x_max, N)
-        self.dm         = self.m[1] - self.m[0]
+        N  = int(x['N'])
+        m  = np.linspace(self.x_min, self.x_max, N)
+        dm = m[1] - m[0]
         if N in self.prec_probs.keys():
             probs = self.prec_probs[N]
         else:
@@ -94,14 +94,14 @@ class DirichletProcess(cpnest.model.Model):
                     logW = np.log(component['weight'])
                     mu   = component['mean']
                     s    = component['sigma']
-                    for i, mi in enumerate(self.m):
+                    for i, mi in enumerate(m):
                         p[i] = log_add(p[i], logW + log_norm(mi, mu, s))
-                    p = np.exp(p + np.log(self.dm) - logsumexp(p+np.log(self.dm)))
+                p = np.exp(p + np.log(dm) - logsumexp(p+np.log(dm)))
                 probs.append(p)
             self.prec_probs[N] = probs
         
         pars = [x[lab] for lab in self.labels]
-        base = np.array([self.model(mi, *pars)*self.dm for mi in self.m])
+        base = np.array([self.model(mi, *pars)*dm for mi in m])
         base = base/np.sum(base)
         a = x['a']*base
         #implemented as in scipy.stats.dirichlet.logpdf() w/o checks
