@@ -57,13 +57,13 @@ class DirichletDistribution(cpnest.model.Model):
 
 class DirichletProcess(cpnest.model.Model):
     
-    def __init__(self, model, pars, bounds, samples, x_min, x_max, n = 30, prior_pars = lambda x: 0, max_a = 2000, max_N = 1e4):
+    def __init__(self, model, pars, bounds, samples, x_min, x_max, prior_pars = lambda x: 0, max_a = 2000, max_N = 300):
     
-        super(DirichletDistribution, self).__init__()
+        super(DirichletProcess, self).__init__()
         self.samples    = samples
         self.labels     = pars
         self.names      = pars + ['a', 'N']
-        self.bounds     = bounds + [[0, max_a], [1,max_N]]
+        self.bounds     = bounds + [[0, max_a], [10,max_N]]
         self.prior_pars = prior_pars
         self.x_min      = x_min
         self.x_max      = x_max
@@ -73,7 +73,7 @@ class DirichletProcess(cpnest.model.Model):
     
     def log_prior(self, x):
     
-        logP = super(DirichletDistribution,self).log_prior(x)
+        logP = super(DirichletProcess,self).log_prior(x)
         if np.isfinite(logP):
             logP = -np.log(x['N'])
             pars = [x[lab] for lab in self.labels]
@@ -87,6 +87,7 @@ class DirichletProcess(cpnest.model.Model):
         if N in self.prec_probs.keys():
             probs = self.prec_probs[N]
         else:
+            probs = []
             for samp in self.samples:
                 p = np.ones(N) * -np.inf
                 for component in samp.values():
