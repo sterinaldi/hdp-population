@@ -200,6 +200,10 @@ def main():
             if not s in samples_set:
                 samples_set.append(s)
         
+        picklefile = open(pickle_folder + '/all_samples.pkl', 'wb')
+        pickle.dump(samples_set, picklefile)
+        picklefile.close()
+        
         print('{0} MF samples'.format(len(samples_set)))
 
         plot_samples(samples = samples_set, m_min = float(options.mmin), m_max = float(options.mmax), output = pickle_folder, injected_density = filtered_density, true_masses = options.true_masses)
