@@ -188,7 +188,7 @@ def main():
     
         samples = []
         pickle_folder = options.output + '/mass_function/'
-        pickle_files  = [pickle_folder + f for f in os.listdir(pickle_folder) if f.startswith('posterior_functions_')]
+        pickle_files  = [pickle_folder + f for f in os.listdir(pickle_folder) if (f.startswith('posterior_functions_') or f.startswith('checkpoint'))]
         
         for file in pickle_files:
             openfile = open(file, 'rb')
