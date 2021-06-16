@@ -12,7 +12,7 @@ from scipy import stats
 from scipy.stats import t as student_t
 from scipy.stats import entropy, gamma
 from scipy.spatial.distance import jensenshannon as js
-from scipy.special import logsumexp, betaln, gammaln
+from scipy.special import logsumexp, betaln, gammaln, erfinv
 from scipy.interpolate import interp1d
 from scipy.integrate import dblquad
 
@@ -105,8 +105,8 @@ class CGSampler:
         sample_min = np.min([np.min(a) for a in self.events])
         sample_max = np.max([np.max(a) for a in self.events])
         self.m_min   = min([m_min, sample_min])
-        if self.m_min < 0.01:
-            self.m_min = 0.01
+#        if self.m_min < 0.001:
+#            self.m_min = 0.001
         self.m_max   = max([m_max, sample_max])
         self.m_max_plot = m_max
         # DP
@@ -166,7 +166,7 @@ class CGSampler:
         return event_samplers
         
     def run_event_sampling(self):
-        ray.init(ignore_reinit_error=True, log_to_driver=False, num_cpus = self.n_parallel_threads)
+        ray.init(ignore_reinit_error=True, num_cpus = self.n_parallel_threads)#, log_to_driver = False)
         i = 0
         self.posterior_functions_events = []
         for n in range(int(len(self.events)/self.n_parallel_threads)+1):
@@ -268,24 +268,25 @@ class Sampler_SE:
                        ):
         # New seed for each subprocess
         random.RandomState(seed = os.getpid())
-        self.mass_samples  = mass_samples
+        self.initial_samples = mass_samples
         self.e_ID    = event_id
         self.burnin  = burnin
         self.n_draws = n_draws
         self.step    = step
         self.m_min   = m_min
         self.m_max   = m_max
-        if sigma_max < (max(mass_samples) - min(mass_samples))/3.:
-            self.sigma_max = sigma_max
-        else:
-            self.sigma_max = (max(mass_samples) - min(mass_samples))/3.
+        self.mass_samples    = self.transform(mass_samples)
+#        if sigma_max < (max(mass_samples) - min(mass_samples))/3.:
+        self.sigma_max = sigma_max
+#        else:
+#            self.sigma_max = (max(mass_samples) - min(mass_samples))/3.
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
         self.b  = a*(b**2)
         self.a  = a
         self.V  = V
-        self.mu = np.mean(mass_samples)
+        self.mu = np.mean(self.mass_samples)
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
@@ -297,6 +298,13 @@ class Sampler_SE:
         self.verbose = verbose
         self.autocorrelation = autocorrelation
         self.alpha_samples = []
+        
+    def transform(self, samples, cdf_prior = None):
+        cdf_bounds = [self.m_min*0.999, self.m_max*1.001]
+        cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
+        new_samples = np.sqrt(2)*erfinv(2*cdf-1)
+        return new_samples
+    
         
     def initial_state(self, samples):
         assign = [a%int(self.icn) for a in range(len(samples))]
@@ -508,10 +516,11 @@ class Sampler_SE:
         
         fig = plt.figure()
         ax  = fig.add_subplot(111)
-        ax.hist(self.mass_samples, bins = int(np.sqrt(len(self.mass_samples))), histtype = 'step', density = True)
+        ax.hist(self.initial_samples, bins = int(np.sqrt(len(self.initial_samples))), histtype = 'step', density = True)
         prob = []
-        for a in app:
-            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
+        for ai in app:
+            a = self.transform(ai)
+            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_normal_density(a, 0, 1) for sample in self.mixture_samples])
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
         names = ['m'] + [str(perc) for perc in percentiles]
@@ -535,13 +544,14 @@ class Sampler_SE:
         
         self.sample_probs = prob
         self.median_mf = np.array(p[50])
+        normalisation  = self.median_mf.sum()*(app[1]-app[0])
         
-        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
-        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
-        ax.plot(app, p[50], marker = '', color = 'r')
+        ax.fill_between(app, p[95]/normalisation, p[5]/normalisation, color = 'lightgreen', alpha = 0.5)
+        ax.fill_between(app, p[84]/normalisation, p[16]/normalisation, color = 'aqua', alpha = 0.5)
+        ax.plot(app, p[50]/normalisation, marker = '', color = 'r')
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        ax.set_xlim(min(self.mass_samples)-5, max(self.mass_samples)+5)
+        ax.set_xlim(min(self.initial_samples)-5, max(self.initial_samples)+5)
         plt.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
