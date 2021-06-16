@@ -94,21 +94,22 @@ class CGSampler:
                        autocorrelation_ev = False
                        ):
         
-        self.events = events
         self.burnin_mf, self.n_draws_mf, self.step_mf = samp_settings
         if samp_settings_ev is not None:
             self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings_ev
         else:
             self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings
         self.burnin_masses, self.step_masses = mass_chain_settings
-
+        self.events = events
         sample_min = np.min([np.min(a) for a in self.events])
         sample_max = np.max([np.max(a) for a in self.events])
         self.m_min   = min([m_min, sample_min])
-#        if self.m_min < 0.001:
-#            self.m_min = 0.001
         self.m_max   = max([m_max, sample_max])
         self.m_max_plot = m_max
+        # probit
+        self.transformed_events = [self.transform(ev) for ev in events]
+        self.t_min = self.transform(self.m_min)
+        self.t_max = self.transform(self.m_max)
         # DP
         self.alpha0 = alpha0
         self.gamma0 = gamma0
@@ -127,7 +128,7 @@ class CGSampler:
         self.output_folder = output_folder
         self.icn = initial_cluster_number
         self.event_samplers = []
-        self.delta_M = [np.std(e) for e in self.events]
+        self.delta_M = [np.std(e) for e in self.transformed_events]
         self.verbose = verbose
         self.process_events = process_events
         self.diagnostic = diagnostic
@@ -142,11 +143,17 @@ class CGSampler:
         self.autocorrelation = autocorrelation
         self.autocorrelation_ev = autocorrelation_ev
         
+    def transform(self, samples):
+        cdf_bounds = [self.m_min*0.999, self.m_max*1.001]
+        cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
+        new_samples = np.sqrt(2)*erfinv(2*cdf-1)
+        return new_samples
+    
     def initialise_samplers(self, marker):
         event_samplers = []
-        for i, ev in enumerate(self.events[marker:marker+self.n_parallel_threads]):
+        for i, (ev, t_ev) in enumerate(self.events[marker:marker+self.n_parallel_threads], self.transformed_events[marker:marker+self.n_parallel_threads]):
             event_samplers.append(Sampler_SE.remote(
-                                            ev,
+                                            t_ev,
                                             self.names[marker+i],
                                             self.burnin_ev,
                                             self.n_draws_ev,
@@ -155,13 +162,16 @@ class CGSampler:
                                             self.b_ev,
                                             self.a_ev,
                                             self.V_ev,
-                                            self.m_min,
-                                            self.m_max,
+                                            np.min(ev),
+                                            np.max(ev),
+                                            np.min(t_ev),
+                                            np.max(t_ev),
                                             self.output_folder,
                                             False,
                                             self.icn,
                                             self.sigma_max_ev,
-                                            self.autocorrelation_ev
+                                            self.autocorrelation_ev,
+                                            transformed = True
                                             ))
         return event_samplers
         
@@ -214,6 +224,8 @@ class CGSampler:
                        alpha0 = self.gamma0,
                        m_min = self.m_min,
                        m_max = self.m_max,
+                       t_min = self.t_min,
+                       t_max = self.t_max
                        verbose = self.verbose,
                        output_folder = self.mf_folder,
                        initial_cluster_number = min([self.icn, len(self.posterior_functions_events)]),
@@ -223,7 +235,8 @@ class CGSampler:
                        sigma_max = self.sigma_max,
                        m_max_plot = self.m_max_plot,
                        autocorrelation = self.autocorrelation,
-                       n_parallel_threads = self.n_parallel_threads
+                       n_parallel_threads = self.n_parallel_threads,
+                       transformed = True
                        )
         
         sampler.run()
@@ -260,11 +273,14 @@ class Sampler_SE:
                        V = 1/4.,
                        m_min = 5,
                        m_max = 50,
+                       t_min = -4,
+                       t_max = 4,
                        output_folder = './',
                        verbose = True,
                        initial_cluster_number = 5.,
                        sigma_max = 5.,
-                       autocorrelation = False
+                       autocorrelation = False,
+                       transformed = False
                        ):
         # New seed for each subprocess
         random.RandomState(seed = os.getpid())
@@ -275,15 +291,21 @@ class Sampler_SE:
         self.step    = step
         self.m_min   = m_min
         self.m_max   = m_max
-        self.mass_samples    = self.transform(mass_samples)
-#        if sigma_max < (max(mass_samples) - min(mass_samples))/3.:
-        self.sigma_max = sigma_max
-#        else:
-#            self.sigma_max = (max(mass_samples) - min(mass_samples))/3.
+        
+        if transformed:
+            self.mass_samples = mass_samples
+            self.t_max   = t_max
+            self.t_min   = t_min
+        else:
+            self.mass_samples = self.transform(mass_samples)
+            self.t_max        = self.transform(self.m_max)
+            self.t_min        = self.transform(self.m_min)
+            
+        self.sigma_max = np.std(self.mass_samples/2)
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = a*(b**2)
+        self.b  = a*(np.std(self.mass_samples)/4.)**2
         self.a  = a
         self.V  = V
         self.mu = np.mean(self.mass_samples)
@@ -299,7 +321,7 @@ class Sampler_SE:
         self.autocorrelation = autocorrelation
         self.alpha_samples = []
         
-    def transform(self, samples, cdf_prior = None):
+    def transform(self, samples):
         cdf_bounds = [self.m_min*0.999, self.m_max*1.001]
         cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
         new_samples = np.sqrt(2)*erfinv(2*cdf-1)
@@ -521,6 +543,15 @@ class Sampler_SE:
         for ai in app:
             a = self.transform(ai)
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_normal_density(a, 0, 1) for sample in self.mixture_samples])
+        
+        log_draws_interp = []
+        for prob in probs:
+            log_draws_interp = interp1d(app, prob)
+        
+        picklefile = open(self.output_posteriors + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
+        pickle.dump(log_draws_interp, picklefile)
+        picklefile.close()
+        
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
         names = ['m'] + [str(perc) for perc in percentiles]
@@ -615,6 +646,9 @@ class Sampler_SE:
         if not os.path.exists(self.output_events + '/pickle/'):
             os.mkdir(self.output_events + '/pickle/')
         self.output_pickle = self.output_events + '/pickle/'
+        if not os.path.exists(self.output_events + '/posteriors/'):
+            os.mkdir(self.output_events + '/posteriors/')
+        self.output_posteriors = self.output_events + '/posteriors/'
         if not os.path.exists(self.output_events + '/entropy/'):
             os.mkdir(self.output_events + '/entropy/')
         self.output_entropy = self.output_events + '/entropy/'
@@ -635,17 +669,21 @@ class MF_Sampler():
                        alpha0 = 1,
                        m_min = 5,
                        m_max = 50,
+                       t_min = -4,
+                       t_max = 4
                        output_folder = './',
                        verbose = True,
                        initial_cluster_number = 5.,
                        injected_density = None,
                        true_masses = None,
                        diagnostic = False,
+                       sigma_min = 0.01,
                        sigma_max = 5,
                        m_max_plot = 50,
                        autocorrelation = False,
                        n_parallel_threads = 1,
-                       ncheck = 5
+                       ncheck = 5,
+                       transformed = False
                        ):
                        
         self.burnin  = burnin
@@ -653,7 +691,16 @@ class MF_Sampler():
         self.step    = step
         self.m_min   = m_min
         self.m_max   = m_max
-        self.sigma_max = sigma_max
+        
+        if transformed:
+            self.t_min = t_min
+            self.t_max = t_max
+        else:
+            self.t_min = self.transform(m_min)
+            self.t_max = self.transform(m_max)
+        
+        self.sigma_min = (self.t_max - self.t_min)/16
+        self.sigma_max = (self.t_max - self.t_min)/4
         self.posterior_functions_events = posterior_functions_events
         self.delta_M = delta_M
         self.m_max_plot = m_max_plot
@@ -677,6 +724,12 @@ class MF_Sampler():
         
         self.p = Pool(n_parallel_threads)
         
+    def transform(self, samples):
+        cdf_bounds = [self.m_min*0.999, self.m_max*1.001]
+        cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
+        new_samples = np.sqrt(2)*erfinv(2*cdf-1)
+        return new_samples
+    
     def initial_state(self):
         self.update_draws()
         assign = [int(a//(len(self.posterior_functions_events)/int(self.icn))) for a in range(len(self.posterior_functions_events))]
@@ -695,24 +748,24 @@ class MF_Sampler():
         for cid in state['cluster_ids_']:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cid]]
             n = len(events)
-            state['logL_D'][cid] = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max)
-        state['logL_D']["new"] = self.log_numerical_predictive([], self.m_min, self.m_max, 0.1, self.sigma_max)
+            state['logL_D'][cid] = self.log_numerical_predictive(events, self.t_min, self.t_max, self.sigma_min, self.sigma_max)
+        state['logL_D']["new"] = self.log_numerical_predictive([], self.t_min, self.t_max, self.sigma_min, self.sigma_max)
         return state
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
         if cluster_id == "new":
             events = []
-            return -np.log(self.m_max-self.m_min), -np.log(self.m_max-self.m_min)
+            return -np.log(self.t_max-self.t_min), -np.log(self.t_max-self.t_min)
         else:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
         n = len(events)
         events.append(self.posterior_draws[data_id])
         logL_D = state['logL_D'][cluster_id] #denominator
-        logL_N = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max) #numerator
+        logL_N = self.log_numerical_predictive(events, self.t_min, self.t_max, self.sigma_min, self.sigma_max) #numerator
         return logL_N - logL_D, logL_N
 
-    def log_numerical_predictive(self, events, m_min, m_max, sigma_min, sigma_max):
-        I, dI = dblquad(integrand, m_min, m_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [events, m_min, m_max, sigma_min, sigma_max])
+    def log_numerical_predictive(self, events, t_min, t_max, sigma_min, sigma_max):
+        I, dI = dblquad(integrand, t_min, t_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [events, t_min, t_max, sigma_min, sigma_max])
         return np.log(I)
     
     def cluster_assignment_distribution(self, data_id, state):
@@ -798,7 +851,7 @@ class MF_Sampler():
         state['ev_in_cl'][cid].remove(data_id)
         events = [self.posterior_draws[i] for i in state['ev_in_cl'][cid]]
         n = len(events)
-        state['logL_D'][cid] = self.log_numerical_predictive(events, self.m_min, self.m_max, 0.1, self.sigma_max)
+        state['logL_D'][cid] = self.log_numerical_predictive(events, self.t_min, self.t_max, self.sigma_min, self.sigma_max)
 
     def add_to_cluster(self, state, data_id, cid):
         state['ev_in_cl'][cid].append(data_id)
@@ -838,7 +891,7 @@ class MF_Sampler():
         components = {}
         for i, cid in enumerate(state['cluster_ids_']):
             events = [self.posterior_draws[j] for j in state['ev_in_cl'][cid]]
-            m, s = sample_point(events, self.m_min, self.m_max, 0.1, self.sigma_max, burnin = 1000)
+            m, s = sample_point(events, self.t_min, self.t_max, self.sigma_min, self.sigma_max, burnin = 1000)
             components[i] = {'mean': m, 'sigma': s, 'weight': weights[i]}
         self.mixture_samples.append(components)
     
@@ -871,8 +924,25 @@ class MF_Sampler():
             truths = np.genfromtxt(self.true_masses, names = True)
             ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True)
         prob = []
-        for a in app:
-            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in self.mixture_samples])
+        for ai in app:
+            a = transform(ai)
+            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_normal_density(a, 0, 1) for sample in self.mixture_samples])
+        
+        log_draws_interp = []
+        for prob in probs:
+            log_draws_interp = interp1d(app, prob)
+        
+        name = self.output_events + '/posterior_functions_mf_'
+        extension ='.pkl'
+        x = 0
+        fileName = name + str(x) + extension
+        while os.path.exists(fileName):
+            x = x + 1
+            fileName = name + str(x) + extension
+        picklefile = open(fileName, 'wb')
+        pickle.dump(log_draws_interp, picklefile)
+        picklefile.close()
+        
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
         self.sample_probs = prob
@@ -898,7 +968,7 @@ class MF_Sampler():
         if self.injected_density is not None:
             self.ppplot(p, app)
         
-        name = self.output_events + '/posterior_functions_mf_'
+        name = self.output_events + '/posterior_mixtures_mf_'
         extension ='.pkl'
         x = 0
         fileName = name + str(x) + extension
@@ -1028,22 +1098,4 @@ def log_normal_density(x, x0, sigma):
         :double:       N(x).
     """
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
-    
-#@jit(nopython = True, nogil = True, cache = True)
-#def log_norm(x, x0, sigma):
-#    return -((x-x0)**2)/(2*(sigma**2)) - np.log(np.sqrt(2*np.pi)) - 0.5*np.log(sigma**2)
-#
-#
-#def integrand(sigma, mu, events, m_min, m_max, sigma_min, sigma_max):
-#    return np.exp(np.sum([my_logsumexp(np.array([np.log(component['weight']) + log_norm(mu, component['mean'], sigma) for component in ev.values()])) for ev in events]))
-#
-#@jit(nopython = True, nogil = True, cache = True)
-#def my_logsumexp(a):
-#    a_max = a.max()
-#    tmp = np.exp(a - a_max)
-#    s = np.sum(tmp)
-#    out = np.log(s)
-#    out += a_max
-#    return out
 
-# π ∑ w_k e^(mu - mu_k)^2/sigma
