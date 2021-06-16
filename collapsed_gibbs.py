@@ -103,8 +103,8 @@ class CGSampler:
         self.events = events
         sample_min = np.min([np.min(a) for a in self.events])
         sample_max = np.max([np.max(a) for a in self.events])
-        self.m_min   = min([m_min, sample_min])
-        self.m_max   = max([m_max, sample_max])
+        self.m_min   = m_min # min([m_min, sample_min])
+        self.m_max   = m_max # max([m_max, sample_max])
         self.m_max_plot = m_max
         # probit
         self.transformed_events = [self.transform(ev) for ev in events]
@@ -144,20 +144,21 @@ class CGSampler:
         self.autocorrelation_ev = autocorrelation_ev
         
     def transform(self, samples):
-        cdf_bounds = [self.m_min*0.999, self.m_max*1.001]
+        cdf_bounds = [self.m_min*0.99, self.m_max*1.01]
         cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
         new_samples = np.sqrt(2)*erfinv(2*cdf-1)
         return new_samples
     
     def initialise_samplers(self, marker):
         event_samplers = []
-        for i, (ev, t_ev) in enumerate(self.events[marker:marker+self.n_parallel_threads], self.transformed_events[marker:marker+self.n_parallel_threads]):
+        for i, (ev, t_ev) in enumerate(zip(self.events[marker:marker+self.n_parallel_threads], self.transformed_events[marker:marker+self.n_parallel_threads])):
             event_samplers.append(Sampler_SE.remote(
                                             t_ev,
                                             self.names[marker+i],
                                             self.burnin_ev,
                                             self.n_draws_ev,
                                             self.step_ev,
+                                            ev,
                                             self.alpha0,
                                             self.b_ev,
                                             self.a_ev,
@@ -166,6 +167,8 @@ class CGSampler:
                                             np.max(ev),
                                             np.min(t_ev),
                                             np.max(t_ev),
+                                            self.m_max,
+                                            self.m_min,
                                             self.output_folder,
                                             False,
                                             self.icn,
@@ -225,7 +228,7 @@ class CGSampler:
                        m_min = self.m_min,
                        m_max = self.m_max,
                        t_min = self.t_min,
-                       t_max = self.t_max
+                       t_max = self.t_max,
                        verbose = self.verbose,
                        output_folder = self.mf_folder,
                        initial_cluster_number = min([self.icn, len(self.posterior_functions_events)]),
@@ -267,6 +270,7 @@ class Sampler_SE:
                        burnin,
                        n_draws,
                        step,
+                       real_masses = None,
                        alpha0 = 1,
                        b = 5,
                        a = 3,
@@ -275,6 +279,8 @@ class Sampler_SE:
                        m_max = 50,
                        t_min = -4,
                        t_max = 4,
+                       glob_m_max = None,
+                       glob_m_min = None,
                        output_folder = './',
                        verbose = True,
                        initial_cluster_number = 5.,
@@ -284,13 +290,25 @@ class Sampler_SE:
                        ):
         # New seed for each subprocess
         random.RandomState(seed = os.getpid())
-        self.initial_samples = mass_samples
+        if real_masses is None:
+            self.initial_samples = mass_samples
+        else:
+            self.initial_samples = real_masses
         self.e_ID    = event_id
         self.burnin  = burnin
         self.n_draws = n_draws
         self.step    = step
         self.m_min   = m_min
         self.m_max   = m_max
+        if glob_m_min is None:
+            self.glob_m_min = m_min
+        else:
+            self.glob_m_min = glob_m_min
+            
+        if glob_m_max is None:
+            self.glob_m_max = m_max
+        else:
+            self.glob_m_max = glob_m_max
         
         if transformed:
             self.mass_samples = mass_samples
@@ -322,7 +340,7 @@ class Sampler_SE:
         self.alpha_samples = []
         
     def transform(self, samples):
-        cdf_bounds = [self.m_min*0.999, self.m_max*1.001]
+        cdf_bounds = [self.glob_m_min*0.999, self.glob_m_max*1.001]
         cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
         new_samples = np.sqrt(2)*erfinv(2*cdf-1)
         return new_samples
@@ -532,6 +550,7 @@ class Sampler_SE:
         """
         
         app  = np.linspace(self.m_min, self.m_max, 1000)
+        da   = app[1]-app[0]
         percentiles = [5,16, 50, 84, 95]
         
         p = {}
@@ -545,8 +564,8 @@ class Sampler_SE:
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_normal_density(a, 0, 1) for sample in self.mixture_samples])
         
         log_draws_interp = []
-        for prob in probs:
-            log_draws_interp = interp1d(app, prob)
+        for pr in np.array(prob).T:
+            log_draws_interp = interp1d(app, pr/(pr.sum()*da))
         
         picklefile = open(self.output_posteriors + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
         pickle.dump(log_draws_interp, picklefile)
@@ -554,11 +573,17 @@ class Sampler_SE:
         
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
+        normalisation = np.sum(np.exp(p[50])*da)
+        for perc in percentiles:
+            p[perc] = p[perc] - normalisation
+            
         names = ['m'] + [str(perc) for perc in percentiles]
         np.savetxt(self.output_recprob + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[5], p[16], p[50], p[84], p[95]]).T, header = ' '.join(names))
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
-        
+        for perc in percentiles:
+            p[perc] = p[perc]/normalisation
+            
         prob = np.array(prob)
         
         ent = []
@@ -575,14 +600,13 @@ class Sampler_SE:
         
         self.sample_probs = prob
         self.median_mf = np.array(p[50])
-        normalisation  = self.median_mf.sum()*(app[1]-app[0])
         
-        ax.fill_between(app, p[95]/normalisation, p[5]/normalisation, color = 'lightgreen', alpha = 0.5)
-        ax.fill_between(app, p[84]/normalisation, p[16]/normalisation, color = 'aqua', alpha = 0.5)
-        ax.plot(app, p[50]/normalisation, marker = '', color = 'r')
+        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
+        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
+        ax.plot(app, p[50], marker = '', color = 'r')
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        ax.set_xlim(min(self.initial_samples)-5, max(self.initial_samples)+5)
+        ax.set_xlim(min(self.initial_samples), max(self.initial_samples))
         plt.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
@@ -670,7 +694,7 @@ class MF_Sampler():
                        m_min = 5,
                        m_max = 50,
                        t_min = -4,
-                       t_max = 4
+                       t_max = 4,
                        output_folder = './',
                        verbose = True,
                        initial_cluster_number = 5.,
@@ -699,8 +723,8 @@ class MF_Sampler():
             self.t_min = self.transform(m_min)
             self.t_max = self.transform(m_max)
         
-        self.sigma_min = (self.t_max - self.t_min)/16
-        self.sigma_max = (self.t_max - self.t_min)/4
+        self.sigma_min = (self.t_max - self.t_min)/18
+        self.sigma_max = (self.t_max - self.t_min)/6
         self.posterior_functions_events = posterior_functions_events
         self.delta_M = delta_M
         self.m_max_plot = m_max_plot
@@ -925,12 +949,12 @@ class MF_Sampler():
             ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True)
         prob = []
         for ai in app:
-            a = transform(ai)
+            a = self.transform(ai)
             prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_normal_density(a, 0, 1) for sample in self.mixture_samples])
         
         log_draws_interp = []
-        for prob in probs:
-            log_draws_interp = interp1d(app, prob)
+        for pr in np.array(prob).T:
+            log_draws_interp = interp1d(app, pr/(np.sum(pr)*da))
         
         name = self.output_events + '/posterior_functions_mf_'
         extension ='.pkl'
@@ -945,12 +969,18 @@ class MF_Sampler():
         
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
+        normalisation = np.sum(np.exp(p[50])*da)
+        for perc in percentiles:
+            p[perc] = p[perc] - normalisation
+            
         self.sample_probs = prob
         self.median_mf = np.array(p[50])
         names = ['m'] + [str(perc) for perc in percentiles]
         np.savetxt(self.output_events + '/log_rec_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
+        for perc in percentiles:
+            p[perc] = p[perc]/normalisation
         
         ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
         ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
@@ -961,6 +991,7 @@ class MF_Sampler():
             ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7)
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
+        ax.set_xlim(self.m_min+2, self.m_max)
         plt.savefig(self.output_events + '/obs_mass_function.pdf', bbox_inches = 'tight')
         ax.set_yscale('log')
         ax.set_ylim(np.min(p[50]))
