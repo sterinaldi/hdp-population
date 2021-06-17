@@ -103,8 +103,8 @@ class CGSampler:
         self.events = events
         sample_min = np.min([np.min(a) for a in self.events])
         sample_max = np.max([np.max(a) for a in self.events])
-        self.m_min   = m_min # min([m_min, sample_min])
-        self.m_max   = m_max # max([m_max, sample_max])
+        self.m_min   = min([m_min, sample_min*0.999])
+        self.m_max   = max([m_max, sample_max*1.001])
         self.m_max_plot = m_max
         # probit
         self.transformed_events = [self.transform(ev) for ev in events]
@@ -399,6 +399,9 @@ class Sampler_SE:
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
         logL = my_student_t(df = 2*a_n, t = t_x)
+        if not np.isfinite(logL):
+            print(self.e_ID, logL, x, mean, sigma)
+        
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
@@ -956,7 +959,7 @@ class MF_Sampler():
         
         log_draws_interp = []
         for pr in np.array(prob).T:
-            log_draws_interp = interp1d(app, pr - logsupexp(pr + np.log(da)))
+            log_draws_interp = interp1d(app, pr - logsumexp(pr + np.log(da)))
         
         name = self.output_events + '/posterior_functions_mf_'
         extension ='.pkl'
