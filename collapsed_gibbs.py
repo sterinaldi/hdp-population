@@ -549,7 +549,9 @@ class Sampler_SE:
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
         
-        app  = np.linspace(self.m_min, self.m_max, 1000)
+        lower_bound = max([self.m_min-5, self.glob_m_min*1.1])
+        upper_bound = min([self.m_max+5, self.glob_m_max*0.9])
+        app  = np.linspace(lower_bound, upper_bound, 1000)
         da   = app[1]-app[0]
         percentiles = [5,16, 50, 84, 95]
         
@@ -565,7 +567,7 @@ class Sampler_SE:
         
         log_draws_interp = []
         for pr in np.array(prob).T:
-            log_draws_interp = interp1d(app, pr/(pr.sum()*da))
+            log_draws_interp = interp1d(app, pr - logsumexp(pr + np.log(da)))
         
         picklefile = open(self.output_posteriors + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
         pickle.dump(log_draws_interp, picklefile)
@@ -573,7 +575,7 @@ class Sampler_SE:
         
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
-        normalisation = np.sum(np.exp(p[50])*da)
+        normalisation = logsumexp(p[50] + np.log(da))
         for perc in percentiles:
             p[perc] = p[perc] - normalisation
             
@@ -582,7 +584,7 @@ class Sampler_SE:
         for perc in percentiles:
             p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
         for perc in percentiles:
-            p[perc] = p[perc]/normalisation
+            p[perc] = p[perc]/np.exp(normalisation)
             
         prob = np.array(prob)
         
@@ -606,7 +608,7 @@ class Sampler_SE:
         ax.plot(app, p[50], marker = '', color = 'r')
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        ax.set_xlim(min(self.initial_samples), max(self.initial_samples))
+        ax.set_xlim(lower_bound, upper_bound)
         plt.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
@@ -954,7 +956,7 @@ class MF_Sampler():
         
         log_draws_interp = []
         for pr in np.array(prob).T:
-            log_draws_interp = interp1d(app, pr/(np.sum(pr)*da))
+            log_draws_interp = interp1d(app, pr - logsupexp(pr + np.log(da)))
         
         name = self.output_events + '/posterior_functions_mf_'
         extension ='.pkl'
@@ -971,7 +973,7 @@ class MF_Sampler():
             p[perc] = np.percentile(prob, perc, axis = 1)
         normalisation = np.sum(np.exp(p[50])*da)
         for perc in percentiles:
-            p[perc] = p[perc] - normalisation
+            p[perc] = p[perc] - np.log(normalisation)
             
         self.sample_probs = prob
         self.median_mf = np.array(p[50])
