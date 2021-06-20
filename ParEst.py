@@ -3,7 +3,9 @@ from scipy.special import gammaln, logsumexp, xlogy
 from scipy.stats import gamma, dirichlet
 import numpy as np
 from numba.extending import get_cython_function_address
-from numba import vectorize, njit
+from numba import vectorize, njit, jit
+from numpy.random import randint, shuffle
+from random import sample
 import ctypes
 
 _PTR = ctypes.POINTER
@@ -64,7 +66,7 @@ class DirichletProcess(cpnest.model.Model):
         self.n_samps    = len(samples)
         self.labels     = pars
         self.names      = pars + ['a', 'N']
-        self.bounds     = bounds + [[0, max_a], [10,max_N]]
+        self.bounds     = bounds + [[0, max_a], [max_N -1,max_N]]
         self.prior_pars = prior_pars
         self.x_min      = x_min
         self.x_max      = x_max
@@ -76,7 +78,7 @@ class DirichletProcess(cpnest.model.Model):
     
         logP = super(DirichletProcess,self).log_prior(x)
         if np.isfinite(logP):
-            logP = -np.log(x['N']) - x['a']
+            logP = -np.log(x['N']) #- x['a']
             pars = [x[lab] for lab in self.labels]
             logP += self.prior_pars(*pars)
         return logP
@@ -97,20 +99,27 @@ class DirichletProcess(cpnest.model.Model):
                     s    = component['sigma']
                     for i, mi in enumerate(m):
                         p[i] = log_add(p[i], logW + log_norm(mi, mu, s))
-                p = np.exp(p + np.log(dm) - logsumexp(p+np.log(dm)))
+                p = p + np.log(dm) - logsumexp(p+np.log(dm))
                 probs.append(p)
+            probs = np.array(probs)
             self.prec_probs[N] = probs
         
         pars = [x[lab] for lab in self.labels]
         base = np.array([self.model(mi, *pars)*dm for mi in m])
         base = base/np.sum(base)
         a = x['a']*base
+        p = np.array([probs[randint(self.n_samps), i] for i in range(N)])
+        p = p - logsumexp(p)
         #implemented as in scipy.stats.dirichlet.logpdf() w/o checks
         lnB = np.sum([numba_gammaln(ai) for ai in a]) - numba_gammaln(np.sum(a))
-        logL = np.sum([- lnB + np.sum((xlogy(a-1, p.T)).T, 0) for p in probs])
+        logL = - lnB + my_dot(a-1, p)#np.sum((xlogy(a-1, p.T)).T, 0)
         return logL
 
 
 @njit
 def numba_gammaln(x):
   return gammaln_float64(x)
+  
+@jit
+def my_dot(a,b):
+    return np.sum(a*b)
