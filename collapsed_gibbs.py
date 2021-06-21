@@ -103,8 +103,8 @@ class CGSampler:
         self.events = events
         sample_min = np.min([np.min(a) for a in self.events])
         sample_max = np.max([np.max(a) for a in self.events])
-        self.m_min   = min([m_min, sample_min*0.999])
-        self.m_max   = max([m_max, sample_max*1.001])
+        self.m_min   = min([m_min, sample_min])
+        self.m_max   = max([m_max, sample_max])
         self.m_max_plot = m_max
         # probit
         self.transformed_events = [self.transform(ev) for ev in events]
@@ -144,7 +144,7 @@ class CGSampler:
         self.autocorrelation_ev = autocorrelation_ev
         
     def transform(self, samples):
-        cdf_bounds = [self.m_min*0.99, self.m_max*1.01]
+        cdf_bounds = [self.m_min*0.9999, self.m_max*1.0001]
         cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
         new_samples = np.sqrt(2)*erfinv(2*cdf-1)
         return new_samples
@@ -235,7 +235,8 @@ class CGSampler:
                        injected_density = self.injected_density,
                        true_masses = self.true_masses,
                        diagnostic = self.diagnostic,
-                       sigma_max = self.sigma_max,
+                       sigma_min = np.std(np.array(self.transformed_events).flatten())/16.,
+                       sigma_max = np.std(np.array(self.transformed_events).flatten())/3.,
                        m_max_plot = self.m_max_plot,
                        autocorrelation = self.autocorrelation,
                        n_parallel_threads = self.n_parallel_threads,
@@ -319,11 +320,11 @@ class Sampler_SE:
             self.t_max        = self.transform(self.m_max)
             self.t_min        = self.transform(self.m_min)
             
-        self.sigma_max = np.std(self.mass_samples/2)
+        self.sigma_max = np.std(self.mass_samples)/2.
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = a*(np.std(self.mass_samples)/4.)**2
+        self.b  = a*(np.std(self.mass_samples)/5.)**2
         self.a  = a
         self.V  = V
         self.mu = np.mean(self.mass_samples)
@@ -340,7 +341,7 @@ class Sampler_SE:
         self.alpha_samples = []
         
     def transform(self, samples):
-        cdf_bounds = [self.glob_m_min*0.999, self.glob_m_max*1.001]
+        cdf_bounds = [self.glob_m_min*0.9999, self.glob_m_max*1.0001]
         cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
         new_samples = np.sqrt(2)*erfinv(2*cdf-1)
         return new_samples
@@ -552,8 +553,8 @@ class Sampler_SE:
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
         
-        lower_bound = max([self.m_min-5, self.glob_m_min*1.1])
-        upper_bound = min([self.m_max+5, self.glob_m_max*0.9])
+        lower_bound = max([self.m_min-1, self.glob_m_min])
+        upper_bound = min([self.m_max+1, self.glob_m_max])
         app  = np.linspace(lower_bound, upper_bound, 1000)
         da   = app[1]-app[0]
         percentiles = [5,16, 50, 84, 95]
@@ -727,9 +728,9 @@ class MF_Sampler():
         else:
             self.t_min = self.transform(m_min)
             self.t_max = self.transform(m_max)
-        
-        self.sigma_min = (self.t_max - self.t_min)/18
-        self.sigma_max = (self.t_max - self.t_min)/6
+         
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
         self.posterior_functions_events = posterior_functions_events
         self.delta_M = delta_M
         self.m_max_plot = m_max_plot
@@ -754,7 +755,7 @@ class MF_Sampler():
         self.p = Pool(n_parallel_threads)
         
     def transform(self, samples):
-        cdf_bounds = [self.m_min*0.999, self.m_max*1.001]
+        cdf_bounds = [self.m_min*0.9999, self.m_max*1.0001]
         cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
         new_samples = np.sqrt(2)*erfinv(2*cdf-1)
         return new_samples
@@ -940,7 +941,7 @@ class MF_Sampler():
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
         
-        app  = np.linspace(self.m_min, self.m_max_plot, 1000)
+        app  = np.linspace(self.m_min*1.1, self.m_max_plot*0.9, 1000)
         da = app[1]-app[0]
         percentiles = [50, 5,16, 84, 95]
         
