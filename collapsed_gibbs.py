@@ -321,11 +321,11 @@ class Sampler_SE:
             self.t_max        = self.transform(self.m_max)
             self.t_min        = self.transform(self.m_min)
             
-        self.sigma_max = np.std(self.mass_samples)/1.5
+        self.sigma_max = np.std(self.mass_samples)/2.
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = a*(np.std(self.mass_samples)/5.)**2
+        self.b  = a*(np.std(self.mass_samples)/4.)**2
         self.a  = a
         self.V  = V
         self.mu = np.mean(self.mass_samples)
@@ -995,7 +995,7 @@ class MF_Sampler():
             ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7)
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        ax.set_xlim(self.m_min+2, self.m_max)
+        ax.set_xlim(self.m_min+3, self.m_max_plot)
         plt.savefig(self.output_events + '/obs_mass_function.pdf', bbox_inches = 'tight')
         ax.set_yscale('log')
         ax.set_ylim(np.min(p[50]))
