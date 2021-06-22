@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import os
 import re
 import warnings
+import sys
 
 from collections import namedtuple, Counter
 from numpy import random
@@ -320,7 +321,7 @@ class Sampler_SE:
             self.t_max        = self.transform(self.m_max)
             self.t_min        = self.transform(self.m_min)
             
-        self.sigma_max = np.std(self.mass_samples)/2.
+        self.sigma_max = np.std(self.mass_samples)/3.
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
@@ -400,9 +401,6 @@ class Sampler_SE:
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
         logL = my_student_t(df = 2*a_n, t = t_x)
-        if not np.isfinite(logL):
-            print(self.e_ID, logL, x, mean, sigma)
-        
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
