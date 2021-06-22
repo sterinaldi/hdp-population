@@ -219,7 +219,7 @@ class CGSampler:
         self.mf_folder = self.output_folder+'/mass_function/'
         if not os.path.exists(self.mf_folder):
             os.mkdir(self.mf_folder)
-            
+        flattened_transf_ev = np.array([x for ev in self.transformed_events for x in ev])
         sampler = MF_Sampler(self.posterior_functions_events,
                        self.burnin_mf,
                        self.n_draws_mf,
@@ -236,8 +236,8 @@ class CGSampler:
                        injected_density = self.injected_density,
                        true_masses = self.true_masses,
                        diagnostic = self.diagnostic,
-                       sigma_min = np.std(np.array(self.transformed_events).flatten())/16.,
-                       sigma_max = np.std(np.array(self.transformed_events).flatten())/3.,
+                       sigma_min = np.std(flattened_transf_ev)/16.,
+                       sigma_max = np.std(flattened_transf_ev)/3.,
                        m_max_plot = self.m_max_plot,
                        autocorrelation = self.autocorrelation,
                        n_parallel_threads = self.n_parallel_threads,
@@ -321,7 +321,7 @@ class Sampler_SE:
             self.t_max        = self.transform(self.m_max)
             self.t_min        = self.transform(self.m_min)
             
-        self.sigma_max = np.std(self.mass_samples)/3.
+        self.sigma_max = np.std(self.mass_samples)/1.5
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
