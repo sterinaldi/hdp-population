@@ -401,6 +401,8 @@ class Sampler_SE:
         t_x     = (x - mu_n)/t_sigma
         # Compute logLikelihood
         logL = my_student_t(df = 2*a_n, t = t_x)
+        if not np.isfinite(logL):
+            print(self.e_ID, logL, mean, sigma, x)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
