@@ -569,7 +569,7 @@ class Sampler_SE:
         
         log_draws_interp = []
         for pr in np.array(prob).T:
-            log_draws_interp = interp1d(app, pr - logsumexp(pr + np.log(da)))
+            log_draws_interp.append(interp1d(app, pr - logsumexp(pr + np.log(da))))
         
         picklefile = open(self.output_posteriors + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
         pickle.dump(log_draws_interp, picklefile)
@@ -610,7 +610,7 @@ class Sampler_SE:
         ax.plot(app, p[50], marker = '', color = 'r')
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        ax.set_xlim(lower_bound, upper_bound)
+        ax.set_xlim(lower_bound, self.m_max_plot)
         plt.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
@@ -958,7 +958,7 @@ class MF_Sampler():
         
         log_draws_interp = []
         for pr in np.array(prob).T:
-            log_draws_interp = interp1d(app, pr - logsumexp(pr + np.log(da)))
+            log_draws_interp.append(interp1d(app, pr - logsumexp(pr + np.log(da))))
         
         name = self.output_events + '/posterior_functions_mf_'
         extension ='.pkl'
