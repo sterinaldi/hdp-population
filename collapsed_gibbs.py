@@ -610,7 +610,7 @@ class Sampler_SE:
         ax.plot(app, p[50], marker = '', color = 'r')
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        ax.set_xlim(lower_bound, self.m_max_plot)
+        ax.set_xlim(lower_bound, upper_bound)
         plt.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         for i, s in enumerate(self.mixture_samples[:25]):
@@ -939,7 +939,7 @@ class MF_Sampler():
         Plots samples [x] for each event in separate plots along with inferred distribution.
         """
         
-        app  = np.linspace(self.m_min*1.1, self.m_max_plot*0.9, 1000)
+        app  = np.linspace(self.m_min*1.1, self.m_max_plot, 1000)
         da = app[1]-app[0]
         percentiles = [50, 5,16, 84, 95]
         
@@ -995,7 +995,7 @@ class MF_Sampler():
             ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7)
         ax.set_xlabel('$M\ [M_\\odot]$')
         ax.set_ylabel('$p(M)$')
-        ax.set_xlim(self.m_min+3, self.m_max_plot)
+        ax.set_xlim(self.m_min*1.1, self.m_max_plot)
         plt.savefig(self.output_events + '/obs_mass_function.pdf', bbox_inches = 'tight')
         ax.set_yscale('log')
         ax.set_ylim(np.min(p[50]))
