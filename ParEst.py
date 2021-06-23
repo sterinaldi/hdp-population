@@ -1,11 +1,12 @@
 import cpnest.model
 from scipy.special import gammaln, logsumexp, xlogy
-from scipy.stats import gamma, dirichlet
+from scipy.stats import gamma, dirichlet, beta
 import numpy as np
 from numba.extending import get_cython_function_address
 from numba import vectorize, njit, jit
 from numpy.random import randint, shuffle
-from random import sample
+from random import sample, shuffle
+import matplotlib.pyplot as plt
 import ctypes
 
 _PTR = ctypes.POINTER
@@ -17,6 +18,7 @@ functype = ctypes.CFUNCTYPE(_dble, _dble)
 gammaln_float64 = functype(addr)
 
 def log_add(x, y): return x+np.log(1.0+np.exp(y-x)) if x >= y else y+np.log(1.0+np.exp(x-y))
+def log_sub(x, y): return x + np.log1p(-np.exp(y-x))
 def log_norm(x, x0, s): return -((x-x0)**2)/(2*s*s) - np.log(np.sqrt(2*np.pi)) - np.log(s)
 
 class DirichletDistribution(cpnest.model.Model):
@@ -66,7 +68,7 @@ class DirichletProcess(cpnest.model.Model):
         self.n_samps    = len(samples)
         self.labels     = pars
         self.names      = pars + ['a', 'N']
-        self.bounds     = bounds + [[0, max_a], [max_N -1,max_N]]
+        self.bounds     = bounds + [[0, max_a], [10,max_N]]
         self.prior_pars = prior_pars
         self.x_min      = x_min
         self.x_max      = x_max
@@ -93,26 +95,32 @@ class DirichletProcess(cpnest.model.Model):
             probs = []
             for samp in self.samples:
                 p = np.ones(N) * -np.inf
-                for component in samp.values():
-                    logW = np.log(component['weight'])
-                    mu   = component['mean']
-                    s    = component['sigma']
-                    for i, mi in enumerate(m):
-                        p[i] = log_add(p[i], logW + log_norm(mi, mu, s))
+#                for component in samp.values():
+#                    logW = np.log(component['weight'])
+#                    mu   = component['mean']
+#                    s    = component['sigma']
+#                    for i, mi in enumerate(m):
+#                        p[i] = log_add(p[i], logW + log_norm(mi, mu, s))
+                p = samp(m)
                 p = p + np.log(dm) - logsumexp(p+np.log(dm))
                 probs.append(p)
             probs = np.array(probs)
+#            t = [shuffle(p) for p in probs.T]
+#            probs = np.array([p - logsumexp(p) for p in probs])
             self.prec_probs[N] = probs
         
         pars = [x[lab] for lab in self.labels]
         base = np.array([self.model(mi, *pars)*dm for mi in m])
         base = base/np.sum(base)
-        a = x['a']*base
-        p = np.array([probs[randint(self.n_samps), i] for i in range(N)])
-        p = p - logsumexp(p)
+        c_par = 10**x['a']
+        a = c_par*base
+#        p = np.array([probs[randint(self.n_samps), i] for i in range(N)])
+#        p = p - logsumexp(p)
         #implemented as in scipy.stats.dirichlet.logpdf() w/o checks
         lnB = np.sum([numba_gammaln(ai) for ai in a]) - numba_gammaln(np.sum(a))
-        logL = - lnB + my_dot(a-1, p)#np.sum((xlogy(a-1, p.T)).T, 0)
+        logL = - lnB + np.sum([my_dot(a-1, p) for p in probs])/self.n_samps#np.sum((xlogy(a-1, p.T)).T, 0)
+#        logL = np.sum([ai*p + (c_par - ai)*log_sub(0,p) + gammaln(c_par) - gammaln(ai) - gammaln(c_par - ai) for ai, p in zip(a, probs.T)])
+#        logL = np.sum([beta(ai, c_par - ai).logpdf(p) for ai, p in zip(a, probs.T)])#- lnB + my_dot(a-1, p)#np.sum((xlogy(a-1, p.T)).T, 0)
         return logL
 
 
