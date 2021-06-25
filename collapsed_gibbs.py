@@ -1093,15 +1093,26 @@ class MF_Sampler():
         return
 
     def checkpoint(self):
-        samps = []
+    
         try:
             picklefile = open(self.output_events + '/checkpoint.pkl', 'rb')
             samps = pickle.load(picklefile)
             picklefile.close()
         except:
-            pass
+            samps = []
         
-        samps = samps + self.mixture_samples[-self.ncheck:]
+        app  = np.linspace(self.m_min*1.1, self.m_max_plot, 1000)
+        da = app[1]-app[0]
+        prob = []
+        for ai in app:
+            a = self.transform(ai)
+            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_normal_density(a, 0, 1) for sample in self.mixture_samples[-self.ncheck:]])
+
+        log_draws_interp = []
+        for pr in np.array(prob).T:
+            log_draws_interp.append(interp1d(app, pr - logsumexp(pr + np.log(da))))
+        
+        samps = samps + log_draws_interp
         picklefile = open(self.output_events + '/checkpoint.pkl', 'wb')
         pickle.dump(samps, picklefile)
         picklefile.close()

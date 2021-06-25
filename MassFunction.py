@@ -41,7 +41,7 @@ def plot_samples(samples, m_min, m_max, output, injected_density = None, true_ma
             ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True, label = '$Masses$')
         prob = []
         for a in app:
-            prob.append([logsumexp([log_normal_density(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) for sample in samples])
+            prob.append([sample(a) for sample in samples])
         for perc in percentiles:
             p[perc] = np.percentile(prob, perc, axis = 1)
         sample_probs = prob
