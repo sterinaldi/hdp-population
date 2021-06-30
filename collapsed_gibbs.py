@@ -32,7 +32,7 @@ from ray.util.multiprocessing import Pool
 # See https://pythonspeed.com/articles/python-multiprocessing/
 from multiprocessing import get_context
 
-from utils import integrand
+from utils import integrand, compute_norm_const
 
 import pickle
 
@@ -795,8 +795,9 @@ class MF_Sampler():
         return logL_N - logL_D, logL_N
 
     def log_numerical_predictive(self, events, t_min, t_max, sigma_min, sigma_max):
-        I, dI = dblquad(integrand, t_min, t_max, gfun = lambda x: sigma_min, hfun = lambda x: sigma_max, args = [events, t_min, t_max, sigma_min, sigma_max])
-        return np.log(I)
+        logN_cnst = compute_norm_const(0, 1, events) + np.log(t_max - t_min) + np.log(sigma_max - sigma_min)
+        I, dI = dblquad(integrand, t_min, t_max, gfun = sigma_min, hfun = sigma_max, args = [events, t_min, t_max, sigma_min, sigma_max, logN_cnst])
+        return np.log(I) + logN_cnst
     
     def cluster_assignment_distribution(self, data_id, state):
         """

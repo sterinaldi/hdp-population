@@ -39,14 +39,26 @@ cdef double _log_prob_mixture(double mu, double sigma, dict ev):
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-cdef double _integrand(double mu, double sigma, list events):
+cdef double _integrand(double mu, double sigma, list events, double logN_cnst):
     cdef double logprob = 0.0
     cdef dict ev
     for ev in events:
         logprob += _log_prob_mixture(mu, sigma, ev)
-    return exp(logprob)
+    return exp(logprob - logN_cnst)
 
-def integrand(double sigma,double mu, list events, double m_min, double m_max, double sigma_min, double sigma_max):
-    return _integrand(mu, sigma, events)
+def integrand(double sigma,double mu, list events, double m_min, double m_max, double sigma_min, double sigma_max, double logN_cnst):
+    return _integrand(mu, sigma, events, logN_cnst)
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.nonecheck(False)
+@cython.cdivision(True)
+cdef double _compute_norm_const(double mu, double sigma, list events):
+    cdef double logprob = 0.0
+    cdef dict ev
+    for ev in events:
+        logprob += _log_prob_mixture(mu, sigma, ev)
+    return logprob
 
+def compute_norm_const(double mu, double sigma, list events):
+    return _compute_norm_const(mu, sigma, events)
