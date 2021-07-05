@@ -214,7 +214,10 @@ def main():
         exit()
     
     app = np.linspace(options.mmin, options.mmax, 1000)
-    obs_mf = np.genfromtxt(options.output + '/mass_function/log_rec_obs_prob_mf.txt', names = True, dtype = ("|S10", float, float))
+    try:
+        obs_mf = np.genfromtxt(options.output + '/mass_function/log_joint_obs_prob_mf.txt', names = True)
+    except:
+        obs_mf = np.genfromtxt(options.output + '/mass_function/log_rec_obs_prob_mf.txt', names = True)
     percentiles = [50, 5, 16, 84, 95]
     dm = obs_mf['m'][1]-obs_mf['m'][0]
     mf = {}
@@ -228,12 +231,13 @@ def main():
     fig = plt.figure()
     fig.suptitle('Mass function')
     ax  = fig.add_subplot(111)
-    ax.fill_between(app, np.exp(mf[95])/norm, np.exp(mf[5])/norm, color = 'lightgreen', alpha = 0.5)
-    ax.fill_between(app, np.exp(mf[84])/norm, np.exp(mf[16])/norm, color = 'aqua', alpha = 0.5)
-    ax.plot(app, np.exp(mf[50])/norm, marker = '', color = 'r')
+    ax.fill_between(obs_mf['m'], np.exp(mf[95])/norm, np.exp(mf[5])/norm, color = 'lightgreen', alpha = 0.5)
+    ax.fill_between(obs_mf['m'], np.exp(mf[84])/norm, np.exp(mf[16])/norm, color = 'aqua', alpha = 0.5)
+    ax.plot(obs_mf['m'], np.exp(mf[50])/norm, marker = '', color = 'r')
     
     if inj_density is not None:
-        ax.plot(app, [inj_density(a) for a in app], marker = '', color = 'm', linewidth = 0.7)
+        norm_density = np.sum([inj_density(ai)*dm for ai in obs_mf['m']])
+        ax.plot(obs_mf['m'], [inj_density(a)/norm_density for a in obs_mf['m']], marker = '', color = 'm', linewidth = 0.7)
     ax.set_ylim(np.min(np.exp(mf[50])))
     ax.set_xlabel('$M\ [M_\\odot]$')
     ax.set_ylabel('$p(M)$')
