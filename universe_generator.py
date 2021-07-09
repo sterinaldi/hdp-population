@@ -7,11 +7,11 @@ import matplotlib.pyplot as plt
 
 #def mass_function(m, alpha, m_max, m_min,scale_max=5, scale_min=5):
 #    return m**(-alpha)*(-alpha+1)/(m_max**(-alpha+1) - m_min**(-alpha+1))*(1-np.exp(-(m-m_max)/scale_max))*(1-np.exp(-(m_min-m)/scale_min))
-def mass_function(m, alpha=0, m_max=50, m_min= 20, l_max = 5, l_min = 5):
-    return m**(-alpha)*(1+erf((m-m_min)/(l_min)))*(1+erf((m_max-m)/l_max))/4.
+#def mass_function(m, alpha=1.2, m_max=70, m_min= 20, l_max = 5, l_min = 5):
+#    return m**(-alpha)*(1+erf((m-m_min)/(l_min)))*(1+erf((m_max-m)/l_max))/4.
 
-#def mass_function(m, x01 = 40, sigma1 = 6, x02 = 60, sigma2 = 4.5):
-#    return (0.8*np.exp(-(m-x01)**2/(2*sigma1**2))/(np.sqrt(2*np.pi)*sigma1) + 0.2*np.exp(-(m-x02)**2/(2*sigma2**2))/(np.sqrt(2*np.pi)*sigma2))/2.
+def mass_function(m, x01 = 25, sigma1 = 4, x02 = 55, sigma2 = 5):
+    return (0.5*np.exp(-(m-x01)**2/(2*sigma1**2))/(np.sqrt(2*np.pi)*sigma1) + 0.5*np.exp(-(m-x02)**2/(2*sigma2**2))/(np.sqrt(2*np.pi)*sigma2))/2.
 
 
 def posterior_probability(m, m_true, k, b):
@@ -32,7 +32,7 @@ def posterior_sampler(m_true, sigma):
     
 if __name__ == '__main__':
 
-    out_folder = '/Users/stefanorinaldi/Documents/mass_inference/selfunc/'
+    out_folder = '/Users/stefanorinaldi/Documents/mass_inference/bimodal_good/'
     if not os.path.exists(out_folder):
         os.mkdir(out_folder)
     post_folder = out_folder+'/events/'
@@ -40,23 +40,23 @@ if __name__ == '__main__':
 
     if not os.path.exists(out_folder+'/events/'):
         os.mkdir(post_folder)
-        
-    data_sf = np.genfromtxt(out_folder + 'selfunc.txt', names = True)
-    selfunc = interp1d(data_sf['m1'], data_sf['pdet']**3*(np.max( data_sf['pdet'])/np.max(data_sf['pdet']**3)))
+
+    #data_sf = np.genfromtxt('/Users/stefanorinaldi/Documents/mass_inference/selfunc_gaussian/selfunc.txt', names = True)
+    selfunc = interp1d(np.linspace(0,100, 100),np.ones(100)) #data_sf['m1'], data_sf['pdet']**3*(np.max( data_sf['pdet'])/np.max(data_sf['pdet']**3)))
     
-    n_bbh = 250
+    n_bbh = 200
     n_samples = 100
 
     alpha = 1.1
-    m_min = 16
-    m_max = 70
+    m_min = 2
+    m_max = 80
     s_min = 2
     s_max = 4
     
     app = np.linspace(m_min, m_max, 1000)
     mf  = mass_function(app)
     sup = mf.max()
-    norm = np.sum(mf*selfunc(app)*(app[1]-app[0]))
+    norm = np.sum(mf*(app[1]-app[0]))
 
     bbhs = []
     masses = []
@@ -67,7 +67,7 @@ if __name__ == '__main__':
 #    for i in range(n_bbh):
     while i < n_bbh:
         m1 = mass_sampler(m_max, m_min, sup)
-        if selfunc(m1) > uniform():
+        if selfunc(m1) > 0:
             sigma = np.exp(uniform(np.log(3), np.log(5)))
             samples = normal(loc = m1, scale = sigma, size = n_samples)
             np.savetxt(post_folder + '/event_{0}.txt'.format(i+1), np.array(samples))
@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
     appM = np.linspace(m_min, m_max, 1000)
     ax1.hist(masses, bins = int(np.sqrt(len(masses))), density = True)
-    ax1.plot(appM, mass_function(appM)*selfunc(appM)/norm, color = 'r', label = 'Observed')
+    ax1.plot(appM, mass_function(appM)*selfunc(appM)/np.sum(mass_function(appM)*selfunc(appM)*(appM[1]-appM[0])), color = 'r', label = 'Observed')
     ax1.plot(appM, mass_function(appM)/(np.sum(mass_function(appM))*(appM[1]-appM[0])), color = 'k', label = 'Astrophysical')
 #    ax1.plot(appM, selfunc(appM))
     ax1.set_xlabel('$M_1\ [M_\\odot]$')
