@@ -4,11 +4,16 @@ import os
 import re
 import pickle
 
+from mpl_toolkits.mplot3d import Axes3D
+
 from collections import namedtuple, Counter
+
 from numpy import random
+from numpy.linalg import det, inv
 
 from scipy import stats
 from scipy.stats import entropy, gamma
+from scipy.stats import multivariate_t as student_t
 from scipy.spatial.distance import jensenshannon as js
 from scipy.special import logsumexp, betaln, gammaln, erfinv
 from scipy.interpolate import interp1d
@@ -109,12 +114,14 @@ class CGSampler:
         else:
             self.burnin_ev, self.n_draws_ev, self.step_ev = samp_settings
         self.events = events
-        sample_min = np.min([np.min(a) for a in self.events])
-        sample_max = np.max([np.max(a) for a in self.events])
-        self.m_min   = min([m_min, sample_min])
-        self.m_max   = max([m_max, sample_max])
+        sample_min = np.min([np.min(a, axis = 0) for a in self.events], axis = 0)
+        sample_max = np.max([np.max(a, axis = 0) for a in self.events], axis = 0)
+        self.m_min   = min([m_min, sample_min], axis = 0)
+        self.m_max   = max([m_max, sample_max], axis = 0)
         self.m_max_plot = m_max
         # probit
+        self.upper_bounds = np.array([x*1.0001 if x > 0 else x*0.9999 for x in self.m_max])
+        self.lower_bounds = np.array([x*0.9999 if x > 0 else x*1.0001 for x in self.m_min])
         self.transformed_events = [self.transform(ev) for ev in events]
         self.t_min = self.transform(self.m_min)
         self.t_max = self.transform(self.m_max)
@@ -137,6 +144,7 @@ class CGSampler:
         self.injected_density = injected_density
         self.true_masses = true_masses
         self.output_recprob = self.output_folder + '/reconstructed_events/pickle/'
+        self.dim = len(self.events[-1][-1])
         if names is not None:
             self.names = names
         else:
@@ -151,17 +159,8 @@ class CGSampler:
         Returns:
             :float or np.ndarray: transformed sample(s)
         '''
-        if self.m_min > 0:
-            min = self.m_min*0.9999
-        else:
-            min = self.m_min*1.0001
-        if self.m_max > 0:
-            max = self.m_max*1.0001
-        else:
-            max = self.m_max*0.9999
-        cdf_bounds = [min, max]
-        cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
-        new_samples = np.sqrt(2)*erfinv(2*cdf-1)
+        cdf = (data.T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
+        new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
         return new_samples
     
     def initialise_samplers(self, marker):
@@ -180,12 +179,14 @@ class CGSampler:
                                             self.alpha0,
                                             self.a_ev,
                                             self.V_ev,
-                                            np.min(ev),
-                                            np.max(ev),
-                                            np.min(t_ev),
-                                            np.max(t_ev),
+                                            np.min(ev, axis = 0),
+                                            np.max(ev, axis = 0),
+                                            np.min(t_ev, axis = 0),
+                                            np.max(t_ev, axis = 0),
                                             self.m_max,
                                             self.m_min,
+                                            self.upper_bounds,
+                                            self.lower_bounds,
                                             self.output_folder,
                                             self.verbose,
                                             self.icn,
@@ -286,19 +287,26 @@ class CGSampler:
         return
         
 
-def my_student_t(df, t):
-    '''
-    Student-t log pdf
-    
-    Arguments:
-        :float df: degrees of freedom
-        :float t:  variable
-        
-    Returns:
-        :float: student_t(df).logpdf(t)
-    '''
-    b = betaln(0.5, df*0.5)
-    return -0.5*np.log(df*np.pi)-b-((df+1)*0.5)*np.log1p(t*t/df)
+@jit(forceobj=True)
+def my_student_t(df, t, mu, sigma, dim, s2max = None):
+    """
+    http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
+    """
+    vals, vecs = np.linalg.eigh(sigma)
+    logdet     = np.log(vals).sum()
+    valsinv    = np.array([1./v for v in vals])
+    U          = vecs * np.sqrt(valsinv)
+    dev        = t - mu
+    maha       = np.square(np.dot(dev, U)).sum(axis=-1)
+
+    x = 0.5 * (df + dim)
+    A = gammaln(x)
+    B = gammaln(0.5 * df)
+    C = dim/2. * np.log(df * np.pi)
+    D = 0.5 * logdet
+    E = -x * np.log1p((1./df) * maha)
+
+    return float(A - B - C - D + E)
     
 @ray.remote
 class SE_Sampler:
@@ -338,16 +346,18 @@ class SE_Sampler:
                        burnin,
                        n_draws,
                        step,
+                       m_min,
+                       m_max,
+                       t_min,
+                       t_max,
                        real_masses = None,
                        alpha0 = 1,
                        a = 3,
                        V = 1/4.,
-                       m_min = 5,
-                       m_max = 50,
-                       t_min = -4,
-                       t_max = 4,
                        glob_m_max = None,
                        glob_m_min = None,
+                       upper_bounds = None,
+                       lower_bounds = None
                        output_folder = './',
                        verbose = True,
                        initial_cluster_number = 5.,
@@ -375,6 +385,15 @@ class SE_Sampler:
         else:
             self.glob_m_max = glob_m_max
         
+        if upper_bounds is None:
+            self.upper_bounds = np.array([x*1.0001 if x > 0 else x*0.9999 for x in self.glob_m_max])
+        else:
+            self.upper_bounds = upper_bounds
+        if lower_bounds is None:
+            self.lower_bounds = np.array([x*0.9999 if x > 0 else x*1.0001 for x in self.glob_m_min])
+        else:
+            self.lower_bounds = lower_bounds
+        
         if transformed:
             self.mass_samples = mass_samples
             self.t_max   = t_max
@@ -384,14 +403,14 @@ class SE_Sampler:
             self.t_max        = self.transform(self.m_max)
             self.t_min        = self.transform(self.m_min)
             
-        self.sigma_max = np.std(self.mass_samples)/2.
+        self.sigma_max = np.std(self.mass_samples, axis = 0)/2.
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.b  = a*(np.std(self.mass_samples)/4.)**2
-        self.a  = a
-        self.V  = V
-        self.mu = np.mean(self.mass_samples)
+        self.L  = (len(mass_samples)*np.std(self.mass_samples, axis = 0)/4.)**2*np.identity(self.dim)
+        self.nu  = a
+        self.k  = V
+        self.mu = np.atleast_2d(np.mean(self.mass_samples, axis = 0))
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
@@ -402,6 +421,7 @@ class SE_Sampler:
         self.n_clusters = []
         self.verbose = verbose
         self.alpha_samples = []
+        self.dim = len(mass_samples[-1])
         
     def transform(self, samples):
         '''
@@ -412,17 +432,8 @@ class SE_Sampler:
         Returns:
             :float or np.ndarray: transformed sample(s)
         '''
-        if self.m_min > 0:
-            min = self.glob_m_min*0.9999
-        else:
-            min = self.glob_m_min*1.0001
-        if self.m_max > 0:
-            max = self.glob_m_max*1.0001
-        else:
-            max = self.glob_m_max*0.9999
-        cdf_bounds = [min, max]
-        cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
-        new_samples = np.sqrt(2)*erfinv(2*cdf-1)
+        cdf = (data.T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
+        new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
         return new_samples
     
         
@@ -847,17 +858,8 @@ class MF_Sampler():
         Returns:
             :float or np.ndarray: transformed sample(s)
         '''
-        if self.m_min > 0:
-            min = self.m_min*0.9999
-        else:
-            min = self.m_min*1.0001
-        if self.m_max > 0:
-            max = self.m_max*1.0001
-        else:
-            max = self.m_max*0.9999
-        cdf_bounds = [min, max]
-        cdf = (samples - cdf_bounds[0])/(cdf_bounds[1]-cdf_bounds[0])
-        new_samples = np.sqrt(2)*erfinv(2*cdf-1)
+        cdf = (data.T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
+        new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
         return new_samples
     
     def initial_state(self):
