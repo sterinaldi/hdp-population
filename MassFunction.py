@@ -25,7 +25,7 @@ def is_opt_provided (parser, dest):
 def log_normal_density(x, x0, sigma):
     return (-(x-x0)**2/(2*sigma**2))-np.log(np.sqrt(2*np.pi)*sigma)
 
-def plot_samples(samples, m_min, m_max, output, injected_density = None, true_masses = None):
+def plot_samples(samples, m_min, m_max, output, injected_density = None, filtered_density = None, true_masses = None):
 
         app  = np.linspace(m_min, m_max, 1000)
         da = app[1]-app[0]
@@ -59,10 +59,17 @@ def plot_samples(samples, m_min, m_max, output, injected_density = None, true_ma
         if injected_density is not None:
             norm = np.sum([injected_density(a)*(app[1]-app[0]) for a in app])
             density = np.array([injected_density(a)/norm for a in app])
-            ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7, label = '$Simulated$')
+            ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7, label = '$Simulated - Astro$')
             ent = js(p[50]/norm, density)
             print('Jensen-Shannon distance: {0} nats'.format(ent))
             np.savetxt(output + '/joint_relative_entropy.txt', np.array([ent]))
+        if filtered_density is not None:
+            norm = np.sum([filtered_density(a)*(app[1]-app[0]) for a in app])
+            f_density = np.array([filtered_density(a)/norm for a in app])
+            ax.plot(app, f_density, color = 'k', marker = '', linewidth = 0.7, label = '$Simulated - Obs$')
+            ent = js(p[50]/norm, f_density)
+            print('Jensen-Shannon distance: {0} nats (filtered)'.format(ent))
+            np.savetxt(output + '/filtered_joint_relative_entropy.txt', np.array([ent]))
         
         plt.legend(loc = 0)
         ax.set_xlabel('$M\ [M_\\odot]$')
@@ -205,8 +212,10 @@ def main():
         picklefile.close()
         
         print('{0} MF samples'.format(len(samples_set)))
-
-        plot_samples(samples = samples_set, m_min = float(options.mmin), m_max = float(options.mmax), output = pickle_folder, injected_density = filtered_density, true_masses = options.true_masses)
+        if options.selection_function is not None:
+            plot_samples(samples = samples_set, m_min = float(options.mmin), m_max = float(options.mmax), output = pickle_folder, injected_density = inj_density, filtered_density = filtered_density, true_masses = options.true_masses)
+        else:
+            plot_samples(samples = samples_set, m_min = float(options.mmin), m_max = float(options.mmax), output = pickle_folder, filtered_density = inj_density, true_masses = options.true_masses)
         
         
         
@@ -231,18 +240,20 @@ def main():
     fig = plt.figure()
     fig.suptitle('Mass function')
     ax  = fig.add_subplot(111)
-    ax.fill_between(obs_mf['m'], np.exp(mf[95])/norm, np.exp(mf[5])/norm, color = 'lightgreen', alpha = 0.5)
-    ax.fill_between(obs_mf['m'], np.exp(mf[84])/norm, np.exp(mf[16])/norm, color = 'aqua', alpha = 0.5)
-    ax.plot(obs_mf['m'], np.exp(mf[50])/norm, marker = '', color = 'r')
+    ax.fill_between(obs_mf['m'], np.exp(mf[95])/norm, np.exp(mf[5])/norm, color = 'lightgreen', alpha = 0.5, label = '$90\%\ CI$')
+    ax.fill_between(obs_mf['m'], np.exp(mf[84])/norm, np.exp(mf[16])/norm, color = 'aqua', alpha = 0.5, label = '$68\%\ CI$')
+    ax.plot(obs_mf['m'], np.exp(mf[50])/norm, marker = '', color = 'r', label = 'Reconstructed (with sel. effects)')
     
     if inj_density is not None:
         norm_density = np.sum([inj_density(ai)*dm for ai in obs_mf['m']])
-        ax.plot(obs_mf['m'], [inj_density(a)/norm_density for a in obs_mf['m']], marker = '', color = 'm', linewidth = 0.7)
+        ax.plot(obs_mf['m'], [inj_density(a)/norm_density for a in obs_mf['m']], marker = '', color = 'm', linewidth = 0.7, label = 'Simulated - Astrophysical')
     ax.set_ylim(np.min(np.exp(mf[50])))
     ax.set_xlabel('$M\ [M_\\odot]$')
     ax.set_ylabel('$p(M)$')
+    ax.legend(loc = 0)
     plt.savefig(options.output + '/mass_function/mass_function.pdf', bbox_inches = 'tight')
     ax.set_yscale('log')
+    ax.set_ylim([1e-3,10])
     plt.savefig(options.output + '/mass_function/log_mass_function.pdf', bbox_inches = 'tight')
     
         
