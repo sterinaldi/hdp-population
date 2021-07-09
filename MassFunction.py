@@ -80,8 +80,10 @@ def plot_samples(samples, m_min, m_max, output, injected_density = None, filtere
         plt.savefig(output + '/log_joint_mass_function.pdf', bbox_inches = 'tight')
 
 def main():
+    '''
+    Runs the analysis
+    '''
     parser = op.OptionParser()
-    
     parser.add_option("-i", "--input", type = "string", dest = "events_path", help = "Input folder")
     parser.add_option("-o", "--output", type = "string", dest = "output", help = "Output folder")
     parser.add_option("--mmin", type = "float", dest = "mmin", help = "Minimum BH mass [Msun]", default = 3.)
@@ -91,22 +93,15 @@ def main():
     parser.add_option("--optfile", type = "string", dest = "optfile", help = "Options file. Passing command line options overrides optfile. It must contains ALL options")
     parser.add_option("--samp_settings", type = "string", dest = "samp_settings", help = "Burnin, samples and step for MF sampling", default = '10,1000,1')
     parser.add_option("--samp_settings_ev", type = "string", dest = "samp_settings_ev", help = "Burnin, samples and step for single event sampling. If None, uses MF settings")
-    parser.add_option("--mc_settings", type = "string", dest = "mc_settings", help = "Burnin and step for mass sampling", default = '1,1')
-    parser.add_option("--hyperpars", type = "string", dest = "hyperpars", help = "MF hyperparameters (a0, b0, V0). See https://www.cs.ubc.ca/~murphyk/Papers/bayesGauss.pdf sec. 6 for reference", default = '1,4,1')
-    parser.add_option("--hyperpars_ev", type = "string", dest = "hyperpars_ev", help = "Event hyperparameters (a0, b0, V0)", default = '1,4,1')
+    parser.add_option("--hyperprior_ev", type = "string", dest = "hyperprior_ev", help = "Event hyperpriors (a0, V0). See https://www.cs.ubc.ca/~murphyk/Papers/bayesGauss.pdf sec. 6 for reference", default = '1,1')
     parser.add_option("--alpha", type = "float", dest = "alpha0", help = "Internal (event) concentration parameter", default = 1.)
     parser.add_option("--gamma", type = "float", dest = "gamma0", help = "External (MF) concentration parameter", default = 1.)
     parser.add_option("-e", "--processed_events", dest = "process_events", action = 'store_false', default = True, help = "Disables event processing")
     parser.add_option("--icn", dest = "initial_cluster_number", type = "float", help = "Initial cluster number", default = 5.)
     parser.add_option("--nthreads", dest = "n_parallel_threads", type = "int", help = "Number of parallel threads to spawn", default = 8)
     parser.add_option("-v", "--verbose", dest = "verbose", action = 'store_true', default = False, help = "Display output")
-    parser.add_option("-d", "--diagnostic", dest = "diagnostic", action = 'store_true', default = False, help = "Diagnostic plots")
     parser.add_option("-p", "--postprocessing", dest = "postprocessing", action = 'store_true', default = False, help = "Postprocessing - requires log_rec_prob_mf.txt")
-    parser.add_option("--sigma_max", dest = "sigma_max", default = 4, help = "Max sigma MF")
-    parser.add_option("--sigma_max_ev", dest = "sigma_max_ev", default = 4, help = "Max sigma SE")
     parser.add_option("--selfunc", dest = "selection_function", help = "Python module with selection function or text file with M_i and S(M_i) for interp1d")
-    parser.add_option("--autocorr", dest = "autocorrelation", help = "Compute mass function autocorrelation?", action = 'store_true', default = False)
-    parser.add_option("--autocorr_ev", dest = "autocorrelation_ev", help = "Compute single event autocorrelation?", action = 'store_true', default = False)
     parser.add_option("--join", dest = "join", help = "Join samples from different runs", action = 'store_true', default = False)
     (options, args) = parser.parse_args()
     
@@ -124,9 +119,8 @@ def main():
         if options.selection_function == 'None':
             options.selection_function = None
             
-    options.hyperpars = [float(x) for x in options.hyperpars.split(',')]
-    if options.hyperpars_ev is not None:
-        options.hyperpars_ev = [float(x) for x in options.hyperpars_ev.split(',')]
+    if options.hyperpriors_ev is not None:
+        options.hyperpriors_ev = [float(x) for x in options.hyperpriors_ev.split(',')]
     options.samp_settings = [int(x) for x in options.samp_settings.split(',')]
     if options.samp_settings_ev is not None:
         options.samp_settings_ev = [int(x) for x in options.samp_settings_ev.split(',')]
@@ -168,11 +162,9 @@ def main():
         sampler = DPGMM.CGSampler(events = events,
                               samp_settings = options.samp_settings,
                               samp_settings_ev = options.samp_settings_ev,
-                              mass_chain_settings = options.mc_settings,
                               alpha0 = float(options.alpha0),
                               gamma0 = float(options.gamma0),
-                              hyperpars_ev = options.hyperpars_ev,
-                              hyperpars = options.hyperpars,
+                              hyperpriors_ev = options.hyperpriors_ev,
                               m_min = float(options.mmin),
                               m_max = float(options.mmax),
                               verbose = bool(options.verbose),
@@ -182,17 +174,11 @@ def main():
                               n_parallel_threads = int(options.n_parallel_threads),
                               injected_density = filtered_density,
                               true_masses = options.true_masses,
-                              diagnostic = bool(options.diagnostic),
-                              sigma_max = float(options.sigma_max),
-                              sigma_max_ev = float(options.sigma_max_ev),
                               names = names,
-                              autocorrelation = bool(options.autocorrelation),
-                              autocorrelation_ev = bool(options.autocorrelation_ev)
                               )
         sampler.run()
     
     if bool(options.join):
-    
         samples = []
         pickle_folder = options.output + '/mass_function/'
         pickle_files  = [pickle_folder + f for f in os.listdir(pickle_folder) if (f.startswith('posterior_functions_') or f.startswith('checkpoint'))]
