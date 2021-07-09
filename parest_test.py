@@ -39,13 +39,13 @@ a = 20
 true_vals = [mu, sigma, a, 1]
 #true_vals = [50, 2, 100, 2.5, a, 1]
 
-samp_file = '/Users/stefanorinaldi/Documents/mass_inference/DP/reconstructed_events/pickle/posterior_functions_event_0.pkl'
+samp_file = '/Users/stefanorinaldi/Documents/mass_inference/DP/reconstructed_events/posteriors/posterior_functions_event_1.pkl'
 openfile  = open(samp_file, 'rb')
 samples   = pickle.load(openfile)
 openfile.close()
 
 
-x = np.linspace(10, 50,300)
+x = np.linspace(20, 40,400)
 dx = x[1]-x[0]
 
 ##
@@ -70,8 +70,9 @@ out_folder  = '/Users/stefanorinaldi/Documents/parametric/DP'
 #plt.savefig(out_folder+'/draws.pdf', bbox_inches = 'tight')
 
 #probs = []
+#xmax = []
 #for samp in samples:
-#    p = np.ones(300) * -np.inf
+#    p = np.ones(400) * -np.inf
 #    for component in samp.values():
 #        logW = np.log(component['weight'])
 #        mu   = component['mean']
@@ -80,7 +81,9 @@ out_folder  = '/Users/stefanorinaldi/Documents/parametric/DP'
 #            p[i] = log_add(p[i], logW + log_norm(mi, mu, s))
 #    p = np.exp(p + np.log(dx) - logsumexp(p+np.log(dx)))
 #    probs.append(p)
+##    xmax.append(x[np.where(p == p.max())])
 #
+##print(np.mean(xmax))
 #for p in probs:
 #    plt.plot(x,p, lw = 0.3)
 #
@@ -95,7 +98,7 @@ out_folder  = '/Users/stefanorinaldi/Documents/parametric/DP'
 #bounds = [[40,60], [1,4], [90, 110], [1,4]]
 #labels = ['\mu_1', '\sigma_1', '\mu_2', '\sigma_2']
 names = ['mu', 'sigma']
-bounds = [[20,45], [3,7]]
+bounds = [[10,40], [3,7]]
 labels = ['\mu', '\sigma']
 
 
@@ -103,25 +106,25 @@ PE = DirichletProcess(
     gauss,
     names,
     bounds,
-    samples[:300],
-    10,
-    50,
+    samples,
+    15,
+    45,
     prior_pars = logPrior,
-    max_a = 10000,
+    max_a = 10,
     max_N = 200
     )
 
 work = cpnest.CPNest(PE,
                     verbose = 2,
                     nlive = 1000,
-                    maxmcmc = 5000,
+                    maxmcmc = 1000,
                     nthreads = 2,
                     output  = out_folder
                     )
 work.run()
 print('log Evidence: {0}'.format(work.NS.logZ))
 
-labels = labels + ['a', 'N']
+labels = labels + ['\\log_{10}(\\alpha)', 'N']
 names = names + ['a','N']
 x = work.posterior_samples.ravel()
 samps = np.column_stack([x[lab] for lab in names])
