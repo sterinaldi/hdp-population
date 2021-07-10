@@ -93,7 +93,7 @@ def main():
     parser.add_option("--optfile", type = "string", dest = "optfile", help = "Options file. Passing command line options overrides optfile. It must contains ALL options")
     parser.add_option("--samp_settings", type = "string", dest = "samp_settings", help = "Burnin, samples and step for MF sampling", default = '10,1000,1')
     parser.add_option("--samp_settings_ev", type = "string", dest = "samp_settings_ev", help = "Burnin, samples and step for single event sampling. If None, uses MF settings")
-    parser.add_option("--hyperprior_ev", type = "string", dest = "hyperprior_ev", help = "Event hyperpriors (a0, V0). See https://www.cs.ubc.ca/~murphyk/Papers/bayesGauss.pdf sec. 6 for reference", default = '1,1')
+    parser.add_option("--hyperpriors_ev", type = "string", dest = "hyperpriors_ev", help = "Event hyperpriors (a0, V0). See https://www.cs.ubc.ca/~murphyk/Papers/bayesGauss.pdf sec. 6 for reference", default = '1,1')
     parser.add_option("--alpha", type = "float", dest = "alpha0", help = "Internal (event) concentration parameter", default = 1.)
     parser.add_option("--gamma", type = "float", dest = "gamma0", help = "External (MF) concentration parameter", default = 1.)
     parser.add_option("-e", "--processed_events", dest = "process_events", action = 'store_false', default = True, help = "Disables event processing")
@@ -124,7 +124,6 @@ def main():
     options.samp_settings = [int(x) for x in options.samp_settings.split(',')]
     if options.samp_settings_ev is not None:
         options.samp_settings_ev = [int(x) for x in options.samp_settings_ev.split(',')]
-    options.mc_settings = [int(x) for x in options.mc_settings.split(',')]
     
     event_files = [options.events_path+f for f in os.listdir(options.events_path) if not f.startswith('.')]
     events      = []
