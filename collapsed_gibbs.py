@@ -19,7 +19,7 @@ from scipy.stats import multivariate_normal as mn
 from scipy.spatial.distance import jensenshannon as js
 from scipy.special import logsumexp, betaln, gammaln, erfinv
 from scipy.interpolate import RegularGridInterpolator
-from scipy.integrate import dblquad
+from scipy.integrate import nquad
 
 from sampler_component_pars import sample_point, MH_single_event
 import itertools
@@ -168,6 +168,8 @@ class CGSampler:
         '''
         cdf = (np.array(samples).T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
         new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
+        if len(new_samples) == 1:
+            return new_samples[0]
         return new_samples
     
     def initialise_samplers(self, marker):
@@ -358,8 +360,8 @@ class SE_Sampler:
                        step,
                        m_min,
                        m_max,
-                       t_min,
-                       t_max,
+                       t_min = -1,
+                       t_max = 1,
                        real_masses = None,
                        alpha0 = 1,
                        a = 1,
@@ -686,7 +688,6 @@ class SE_Sampler:
             a = self.transform([ai])
             #FIXME: scrivere log_norm in cython
             logsum = np.sum([log_norm(par,0, 1) for par in a])
-            print(logsum)
             prob.append([logsumexp([log_norm(a, component['mean'], component['cov']) + np.log(component['weight']) for component in sample.values()]) - logsum for sample in self.mixture_samples])
         prob = np.array(prob).reshape([n_points for _ in range(self.dim)] + [self.n_draws])
         
@@ -822,21 +823,23 @@ class MF_Sampler():
                        burnin,
                        n_draws,
                        step,
+                       m_min,
+                       m_max,
+                       t_min,
+                       t_max,
                        alpha0 = 1,
-                       m_min = 5,
-                       m_max = 50,
-                       t_min = -4,
-                       t_max = 4,
                        output_folder = './',
                        initial_cluster_number = 5.,
+                       upper_bounds = None,
+                       lower_bounds = None,
                        injected_density = None,
                        true_masses = None,
-                       sigma_min = 0.005,
+                       sigma_min = 0.003,
                        sigma_max = 0.7,
-                       m_max_plot = 50,
                        n_parallel_threads = 1,
                        ncheck = 5,
-                       transformed = False
+                       transformed = False,
+                       var_names = None
                        ):
                        
         self.burnin  = burnin
@@ -844,18 +847,19 @@ class MF_Sampler():
         self.step    = step
         self.m_min   = m_min
         self.m_max   = m_max
+        self.lower_bounds = lower_bounds
+        self.upper_bounds = upper_bounds
         
         if transformed:
             self.t_min = t_min
             self.t_max = t_max
         else:
-            self.t_min = self.transform(m_min)
-            self.t_max = self.transform(m_max)
+            self.t_min = self.transform([m_min])
+            self.t_max = self.transform([m_max])
          
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.posterior_functions_events = posterior_functions_events
-        self.m_max_plot = m_max_plot
         # DP parameters
         self.alpha0 = alpha0
         # Miscellanea
@@ -865,7 +869,7 @@ class MF_Sampler():
         self.output_folder = output_folder
         self.mixture_samples = []
         self.n_clusters = []
-        self.injected_density = injected_density
+#        self.injected_density = injected_density
         self.true_masses = true_masses
         self.n_parallel_threads = n_parallel_threads
         self.alpha_samples = []
@@ -884,6 +888,8 @@ class MF_Sampler():
         '''
         cdf = (np.array(samples).T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
         new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
+        if len(new_samples) == 1:
+            return new_samples[0]
         return new_samples
     
     def initial_state(self):
@@ -917,7 +923,7 @@ class MF_Sampler():
         '''
         if cluster_id == "new":
             events = []
-            return -np.log(self.t_max-self.t_min), -np.log(self.t_max-self.t_min)
+            return -np.logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]), -np.logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)])
         else:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
         n = len(events)
@@ -927,8 +933,10 @@ class MF_Sampler():
         return logL_N - logL_D, logL_N
 
     def log_numerical_predictive(self, events, t_min, t_max, sigma_min, sigma_max):
-        logN_cnst = compute_norm_const(0, 1, events) + np.log(t_max - t_min) + np.log(sigma_max - sigma_min)
-        I, dI = dblquad(integrand, t_min, t_max, gfun = sigma_min, hfun = sigma_max, args = [events, t_min, t_max, sigma_min, sigma_max, logN_cnst])
+        logN_cnst = compute_norm_const(0, 1, events) + np.logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]) + np.log(sigma_max - sigma_min)*self.dim*(self.dim + 1)/2.
+        bounds = [[tmin, tmax] for tmin, tmax in zip(t_min, t_max)] + [[sigma_min, sigma_max] for _ in range(self.dim*(self.dim + 1)/2.)]
+        #FIXME: scrivere integrand per n dimensioni
+        I, dI, d = nquad(integrand, bounds, args = [events, t_min, t_max, sigma_min, sigma_max, logN_cnst])
         return np.log(I) + logN_cnst
     
     def cluster_assignment_distribution(self, data_id, state):
@@ -938,13 +946,13 @@ class MF_Sampler():
         """
         cluster_ids = list(state['ev_in_cl'].keys()) + ['new']
         # can't pickle injected density
-        saved_injected_density = self.injected_density
+#        saved_injected_density = self.injected_density
         self.injected_density  = None
 #        with Pool(self.n_parallel_threads) as p:
         output = self.p.map(self.compute_score, [[data_id, cid, state] for cid in cluster_ids])
         scores = {out[0]: out[1] for out in output}
         self.numerators = {out[0]: out[2] for out in output}
-        self.injected_density = saved_injected_density
+#        self.injected_density = saved_injected_density
         normalization = 1/sum(scores.values())
         scores = {cid: score*normalization for cid, score in scores.items()}
         return scores
@@ -1058,6 +1066,7 @@ class MF_Sampler():
         components = {}
         for i, cid in enumerate(state['cluster_ids_']):
             events = [self.posterior_draws[j] for j in state['ev_in_cl'][cid]]
+            #FIXME: Scrivere sample_point per ndim
             m, s = sample_point(events, self.t_min, self.t_max, self.sigma_min, self.sigma_max, burnin = 1000)
             components[i] = {'mean': m, 'sigma': s, 'weight': weights[i]}
         self.mixture_samples.append(components)
