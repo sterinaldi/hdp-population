@@ -5,6 +5,7 @@ import re
 import pickle
 
 from mpl_toolkits.mplot3d import Axes3D
+from corner import corner
 
 from collections import namedtuple, Counter
 
@@ -14,12 +15,14 @@ from numpy.linalg import det, inv
 from scipy import stats
 from scipy.stats import entropy, gamma
 from scipy.stats import multivariate_t as student_t
+from scipy.stats import multivariate_normal as mn
 from scipy.spatial.distance import jensenshannon as js
 from scipy.special import logsumexp, betaln, gammaln, erfinv
-from scipy.interpolate import interp1d
+from scipy.interpolate import RegularGridInterpolator
 from scipy.integrate import dblquad
 
-from sampler_component_pars import sample_point
+from sampler_component_pars import sample_point, MH_single_event
+import itertools
 
 from time import perf_counter
 
@@ -27,7 +30,9 @@ import ray
 from ray.util import ActorPool
 from ray.util.multiprocessing import Pool
 
-from utils import integrand, compute_norm_const, log_norm
+from numba import jit
+
+from utils import integrand, compute_norm_const#, log_norm
 
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
@@ -82,6 +87,7 @@ class CGSampler:
         :function injected_density:     python function with simulated density
         :iterable true_masses:          draws from injected_density around which are drawn simulated samples
         :iterable names:                str containing names to be given to single-event output files (e.g. ['GW150814', 'GW170817'])
+        :iterable var_names:            str containing parameter names for corner plot
     
     Returns:
         :CGSampler: instance of CGSampler class
@@ -106,6 +112,7 @@ class CGSampler:
                        injected_density = None,
                        true_masses = None,
                        names = None,
+                       var_names = None
                        ):
         
         self.burnin_mf, self.n_draws_mf, self.step_mf = samp_settings
@@ -159,7 +166,7 @@ class CGSampler:
         Returns:
             :float or np.ndarray: transformed sample(s)
         '''
-        cdf = (data.T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
+        cdf = (np.array(samples).T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
         new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
         return new_samples
     
@@ -190,7 +197,8 @@ class CGSampler:
                                             self.output_folder,
                                             self.verbose,
                                             self.icn,
-                                            transformed = True
+                                            transformed = True,
+                                            var_names = self.var_names
                                             ))
         return event_samplers
         
@@ -288,11 +296,12 @@ class CGSampler:
         
 
 @jit(forceobj=True)
-def my_student_t(df, t, mu, sigma, dim, s2max = None):
+def my_student_t(df, t, mu, sigma, dim, s2max = np.inf):
     """
     http://gregorygundersen.com/blog/2020/01/20/multivariate-t/
     """
     vals, vecs = np.linalg.eigh(sigma)
+    vals       = np.minimum(vals, s2max)
     logdet     = np.log(vals).sum()
     valsinv    = np.array([1./v for v in vals])
     U          = vecs * np.sqrt(valsinv)
@@ -308,7 +317,7 @@ def my_student_t(df, t, mu, sigma, dim, s2max = None):
 
     return float(A - B - C - D + E)
     
-@ray.remote
+#@ray.remote
 class SE_Sampler:
     '''
     Class to reconstruct a posterior density function given samples.
@@ -333,6 +342,7 @@ class SE_Sampler:
         :bool verbose:                  displays analysis progress status
         :double initial_cluster_number: initial guess for the number of active clusters
         :double transformed:            mass samples are already in probit space
+        :iterable var_names:            variable names (for corner plots)
     
     Returns:
         :SE_Sampler: instance of SE_Sampler class
@@ -352,16 +362,17 @@ class SE_Sampler:
                        t_max,
                        real_masses = None,
                        alpha0 = 1,
-                       a = 3,
-                       V = 1/4.,
+                       a = 1,
+                       V = 1,
                        glob_m_max = None,
                        glob_m_min = None,
                        upper_bounds = None,
-                       lower_bounds = None
+                       lower_bounds = None,
                        output_folder = './',
                        verbose = True,
                        initial_cluster_number = 5.,
-                       transformed = False
+                       transformed = False,
+                       var_names = None
                        ):
         # New seed for each subprocess
         random.RandomState(seed = os.getpid())
@@ -386,11 +397,11 @@ class SE_Sampler:
             self.glob_m_max = glob_m_max
         
         if upper_bounds is None:
-            self.upper_bounds = np.array([x*1.0001 if x > 0 else x*0.9999 for x in self.glob_m_max])
+            self.upper_bounds = np.array([x*1.01 if x > 0 else x*0.99 for x in self.glob_m_max])
         else:
             self.upper_bounds = upper_bounds
         if lower_bounds is None:
-            self.lower_bounds = np.array([x*0.9999 if x > 0 else x*1.0001 for x in self.glob_m_min])
+            self.lower_bounds = np.array([x*0.99 if x > 0 else x*1.01 for x in self.glob_m_min])
         else:
             self.lower_bounds = lower_bounds
         
@@ -400,28 +411,29 @@ class SE_Sampler:
             self.t_min   = t_min
         else:
             self.mass_samples = self.transform(mass_samples)
-            self.t_max        = self.transform(self.m_max)
-            self.t_min        = self.transform(self.m_min)
+            self.t_max        = self.transform([self.m_max])
+            self.t_min        = self.transform([self.m_min])
             
-        self.sigma_max = np.std(self.mass_samples, axis = 0)/2.
+        self.sigma_max = np.var(self.mass_samples, axis = 0)
+        self.dim = len(mass_samples[-1])
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.L  = (len(mass_samples)*np.std(self.mass_samples, axis = 0)/4.)**2*np.identity(self.dim)
-        self.nu  = a
+        self.L  = (np.std(self.mass_samples, axis = 0)/3.)**2*np.identity(self.dim)
+        self.nu  = np.max([a,self.dim])
         self.k  = V
         self.mu = np.atleast_2d(np.mean(self.mass_samples, axis = 0))
         # Miscellanea
         self.icn    = initial_cluster_number
         self.states = []
-        self.SuffStat = namedtuple('SuffStat', 'mean var N')
+        self.SuffStat = namedtuple('SuffStat', 'mean cov N')
         # Output
         self.output_folder = output_folder
         self.mixture_samples = []
         self.n_clusters = []
         self.verbose = verbose
         self.alpha_samples = []
-        self.dim = len(mass_samples[-1])
+        self.var_names = var_names
         
     def transform(self, samples):
         '''
@@ -432,8 +444,10 @@ class SE_Sampler:
         Returns:
             :float or np.ndarray: transformed sample(s)
         '''
-        cdf = (data.T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
+        cdf = (np.array(samples).T - np.atleast_2d(self.lower_bounds).T)/np.array([self.upper_bounds - self.lower_bounds]).T
         new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
+        if len(new_samples) == 1:
+            return new_samples[0]
         return new_samples
     
         
@@ -451,9 +465,9 @@ class SE_Sampler:
             'alpha_': self.alpha0,
             'Ntot': len(samples),
             'hyperparameters_': {
-                "b": self.b,
-                "a": self.a,
-                "V": self.V,
+                "L": self.L,
+                "k": self.k,
+                "nu": self.nu,
                 "mu": self.mu
                 },
             'suffstats': {cid: None for cid in cluster_ids},
@@ -466,52 +480,51 @@ class SE_Sampler:
     def update_suffstats(self, state):
         for cluster_id, N in Counter(state['assignment']).items():
             points_in_cluster = [x for x, cid in zip(state['data_'], state['assignment']) if cid == cluster_id]
-            mean = np.array(points_in_cluster).mean()
-            var  = np.array(points_in_cluster).var()
+            mean = np.atleast_2d(np.array(points_in_cluster).mean(axis = 0))
+            cov  = np.cov(np.array(points_in_cluster), rowvar = False)
             M    = len(points_in_cluster)
-            state['suffstats'][cluster_id] = self.SuffStat(mean, var, M)
+            state['suffstats'][cluster_id] = self.SuffStat(mean, cov, M)
     
     def log_predictive_likelihood(self, data_id, cluster_id, state):
         '''
         Computes the probability of a sample to be drawn from a cluster conditioned on all the samples assigned to the cluster
         '''
         if cluster_id == "new":
-            ss = self.SuffStat(0,0,0)
+            ss = self.SuffStat(np.atleast_2d(0),np.identity(self.dim)*0,0)
         else:
             ss  = state['suffstats'][cluster_id]
             
         x = state['data_'][data_id]
         mean = ss.mean
-        sigma = ss.var
-        N     = ss.N
+        S = ss.cov
+        N = ss.N
         # Update hyperparameters
-        V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-        mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-        b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
-        a_n  = state['hyperparameters_']["a"] + N/2.
+        k_n  = state['hyperparameters_']["k"] + N
+        mu_n = np.atleast_2d((state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n)
+        nu_n = state['hyperparameters_']["nu"] + N
+        L_n  = state['hyperparameters_']["L"]*state['hyperparameters_']["k"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"]))/k_n
         # Update t-parameters
-        t_sigma = np.sqrt(b_n*(1+V_n)/a_n)
-        t_sigma = min([t_sigma, self.sigma_max])
-        t_x     = (x - mu_n)/t_sigma
+        t_df    = nu_n - self.dim + 1
+        t_shape = L_n*(k_n+1)/(k_n*t_df)
         # Compute logLikelihood
-        logL = my_student_t(df = 2*a_n, t = t_x)
-        if not np.isfinite(logL):
-            print(self.e_ID, logL, mean, sigma, x)
+        logL = my_student_t(df = t_df, t = np.atleast_2d(x), mu = mu_n, sigma = t_shape, dim = self.dim, s2max = self.sigma_max)
         return logL
 
     def add_datapoint_to_suffstats(self, x, ss):
+        x = np.atleast_2d(x)
         mean = (ss.mean*(ss.N)+x)/(ss.N+1)
-        var  = (ss.N*(ss.var + ss.mean**2) + x**2)/(ss.N+1) - mean**2
-        return self.SuffStat(mean, var, ss.N+1)
+        cov  = (ss.N*(ss.cov + np.matmul(ss.mean.T, ss.mean)) + np.matmul(x.T, x))/(ss.N+1) - np.matmul(mean.T, mean)
+        return self.SuffStat(mean, cov, ss.N+1)
 
 
     def remove_datapoint_from_suffstats(self, x, ss):
+        x = np.atleast_2d(x)
         if ss.N == 1:
-            return(self.SuffStat(0,0,0))
+            return(self.SuffStat(np.atleast_2d(0),np.identity(self.dim)*0,0))
         mean = (ss.mean*(ss.N)-x)/(ss.N-1)
-        var  = (ss.N*(ss.var + ss.mean**2) - x**2)/(ss.N-1) - mean**2
-        return self.SuffStat(mean, var, ss.N-1)
-    
+        cov  = (ss.N*(ss.cov + np.matmul(ss.mean.T, ss.mean)) - np.matmul(x.T, x))/(ss.N-1) - np.matmul(mean.T, mean)
+        return self.SuffStat(mean, cov, ss.N-1)
+        
     def cluster_assignment_distribution(self, data_id, state):
         """
         Compute the marginal distribution of cluster assignment
@@ -540,7 +553,7 @@ class SE_Sampler:
     def create_cluster(self, state):
         state["num_clusters_"] += 1
         cluster_id = max(state['suffstats'].keys()) + 1
-        state['suffstats'][cluster_id] = self.SuffStat(0, 0, 0)
+        state['suffstats'][cluster_id] = self.SuffStat(np.atleast_2d(0),np.identity(self.dim)*0,0)
         state['cluster_ids_'].append(cluster_id)
         return cluster_id
 
@@ -605,20 +618,22 @@ class SE_Sampler:
         '''
         ss = state['suffstats']
         alpha = [ss[cid].N + state['alpha_'] / state['num_clusters_'] for cid in state['cluster_ids_']]
-        weights = random.RandomState().dirichlet(alpha).flatten()
+        weights = stats.dirichlet(alpha).rvs(size=1).flatten()
         components = {}
         for i, cid in enumerate(state['cluster_ids_']):
             mean = ss[cid].mean
-            sigma = ss[cid].var
+            S = ss[cid].cov
             N     = ss[cid].N
-            V_n  = 1/(1/state['hyperparameters_']["V"] + N)
-            mu_n = (state['hyperparameters_']["mu"]/state['hyperparameters_']["V"] + N*mean)*V_n
-            b_n  = state['hyperparameters_']["b"] + (state['hyperparameters_']["mu"]**2/state['hyperparameters_']["V"] + (sigma + mean**2)*N - mu_n**2/V_n)/2.
-            a_n  = state['hyperparameters_']["a"] + N/2.
+            k_n  = state['hyperparameters_']["k"] + N
+            mu_n = np.atleast_2d((state['hyperparameters_']["mu"]*state['hyperparameters_']["k"] + N*mean)/k_n)
+            nu_n = state['hyperparameters_']["nu"] + N
+            L_n  = state['hyperparameters_']["L"] + S*N + state['hyperparameters_']["k"]*N*np.matmul((mean - state['hyperparameters_']["mu"]).T, (mean - state['hyperparameters_']["mu"]))/k_n
             # Update t-parameters
-            s = stats.invgamma(a_n, scale = b_n).rvs()
-            m = stats.norm(mu_n, s*V_n).rvs()
-            components[i] = {'mean': m, 'sigma': np.sqrt(s), 'weight': weights[i]}
+            s = stats.invwishart(df = nu_n, scale = L_n).rvs()
+            t_df    = nu_n - self.dim + 1
+            t_shape = L_n*(k_n+1)/(k_n*t_df)
+            m = student_t(df = t_df, loc = mu_n.flatten(), shape = t_shape).rvs()
+            components[i] = {'mean': m, 'cov': s, 'weight': weights[i], 'N': N}
         self.mixture_samples.append(components)
     
     def run_sampling(self):
@@ -649,72 +664,80 @@ class SE_Sampler:
         print('------------------------')
         return
 
-    def postprocess(self):
+    def postprocess(self, n_points = 30):
         """
         Plots samples [x] for each event in separate plots along with inferred distribution and saves draws.
         """
         
-        lower_bound = max([self.m_min-1, self.glob_m_min])
-        upper_bound = min([self.m_max+1, self.glob_m_max])
-        app  = np.linspace(lower_bound, upper_bound, 1000)
-        da   = app[1]-app[0]
-        percentiles = [5,16, 50, 84, 95]
+        lower_bound = np.maximum(self.m_min, self.glob_m_min)
+        upper_bound = np.minimum(self.m_max, self.glob_m_max)
+        points = [np.linspace(l, u, n_points) for l, u in zip(lower_bound, upper_bound)]
+        log_vol_el = np.sum([np.log(v[1]-v[0]) for v in points])
+        gridpoints = np.array(list(itertools.product(*points)))
+        percentiles = [50] #[5,16, 50, 84, 95]
         
         p = {}
         
-        fig = plt.figure()
-        ax  = fig.add_subplot(111)
-        ax.hist(self.initial_samples, bins = int(np.sqrt(len(self.initial_samples))), histtype = 'step', density = True)
+#        fig = plt.figure()
+#        ax  = fig.add_subplot(111)
+#        ax.hist(self.initial_samples, bins = int(np.sqrt(len(self.initial_samples))), histtype = 'step', density = True)
         prob = []
-        for ai in app:
-            a = self.transform(ai)
-            prob.append([logsumexp([log_norm(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_norm(a, 0, 1) for sample in self.mixture_samples])
+        for ai in gridpoints:
+            a = self.transform([ai])
+            #FIXME: scrivere log_norm in cython
+            logsum = np.sum([log_norm(par,0, 1) for par in a])
+            print(logsum)
+            prob.append([logsumexp([log_norm(a, component['mean'], component['cov']) + np.log(component['weight']) for component in sample.values()]) - logsum for sample in self.mixture_samples])
+        prob = np.array(prob).reshape([n_points for _ in range(self.dim)] + [self.n_draws])
         
         log_draws_interp = []
-        for pr in np.array(prob).T:
-            log_draws_interp.append(interp1d(app, pr - logsumexp(pr + np.log(da))))
+        for i in range(self.n_draws):
+            log_draws_interp.append(RegularGridInterpolator(points, prob[...,i] - logsumexp(prob[...,i] + log_vol_el)))
         
         picklefile = open(self.output_posteriors + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
         pickle.dump(log_draws_interp, picklefile)
         picklefile.close()
         
         for perc in percentiles:
-            p[perc] = np.percentile(prob, perc, axis = 1)
-        normalisation = logsumexp(p[50] + np.log(da))
+            p[perc] = np.percentile(prob, perc, axis = -1)
+        normalisation = logsumexp(p[50] + log_vol_el)
         for perc in percentiles:
             p[perc] = p[perc] - normalisation
             
         names = ['m'] + [str(perc) for perc in percentiles]
-        np.savetxt(self.output_recprob + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[5], p[16], p[50], p[84], p[95]]).T, header = ' '.join(names))
+        
+#        np.savetxt(self.output_recprob + '/log_rec_prob_{0}.txt'.format(self.e_ID), np.array([app, p[5], p[16], p[50], p[84], p[95]]).T, header = ' '.join(names))
+        picklefile = open(self.output_recprob + '/log_rec_prob_{0}.pkl'.format(self.e_ID), 'wb')
+        pickle.dump(RegularGridInterpolator(points, p[50]), picklefile)
+        picklefile.close()
+        
         for perc in percentiles:
-            p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
+            p[perc] = np.exp(np.percentile(prob, perc, axis = -1))
         for perc in percentiles:
             p[perc] = p[perc]/np.exp(normalisation)
             
         prob = np.array(prob)
         
-        ent = []
-        
-        for i in range(np.shape(prob)[1]):
-            sample = np.exp(prob[:,i])
-            ent.append(js(sample,p[50]))
-        mean_ent = np.mean(ent)
-        np.savetxt(self.output_entropy + '/KLdiv_{0}.txt'.format(self.e_ID), np.array(ent), header = 'mean JS distance = {0}'.format(mean_ent))
+        #FIXME: Jensen-Shannon distance in n dimensions? js works only on one axis
+#        ent = []
+#        for i in range(np.shape(prob)[1]):
+#            sample = np.exp(prob[:,i])
+#            ent.append(js(sample,p[50]))
+#        mean_ent = np.mean(ent)
+#        np.savetxt(self.output_entropy + '/KLdiv_{0}.txt'.format(self.e_ID), np.array(ent), header = 'mean JS distance = {0}'.format(mean_ent))
         
         picklefile = open(self.output_pickle + '/posterior_functions_{0}.pkl'.format(self.e_ID), 'wb')
         pickle.dump(self.mixture_samples, picklefile)
         picklefile.close()
         
         self.sample_probs = prob
-        self.median_mf = np.array(p[50])
+        self.median = np.array(p[50])
+        self.points = points
         
-        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
-        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
-        ax.plot(app, p[50], marker = '', color = 'r')
-        ax.set_xlabel('$M\ [M_\\odot]$')
-        ax.set_ylabel('$p(M)$')
-        ax.set_xlim(lower_bound, upper_bound)
-        plt.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
+        samples_to_plot = MH_single_event(RegularGridInterpolator(points, p[50]), upper_bound, lower_bound, len(self.mass_samples))
+        c = corner(self.initial_samples, color = 'orange', labels = self.var_names, hist_kwargs={'density':True})
+        c = corner(samples_to_plot, fig = c, color = 'blue', labels = self.var_names, hist_kwargs={'density':True})
+        c.savefig(self.output_pltevents + '/{0}.pdf'.format(self.e_ID), bbox_inches = 'tight')
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.plot(np.arange(1,len(self.n_clusters)+1), self.n_clusters, ls = '--', marker = ',', linewidth = 0.5)
@@ -751,7 +774,8 @@ class SE_Sampler:
             os.mkdir(self.output_events + '/alpha/')
         self.alpha_folder = self.output_events + '/alpha/'
         return
-    
+        
+
     def run(self):
         """
         Runs sampler, saves samples and produces output plots.
@@ -858,7 +882,7 @@ class MF_Sampler():
         Returns:
             :float or np.ndarray: transformed sample(s)
         '''
-        cdf = (data.T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
+        cdf = (np.array(samples).T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
         new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
         return new_samples
     
@@ -1193,7 +1217,7 @@ class MF_Sampler():
             if (i+1) % self.ncheck == 0:
                 self.checkpoint()
         print('\n', end = '')
-        return
+        
 
-
-
+def log_norm(x, mu, cov):
+    return mn(mean = mu, cov = cov).logpdf(x)
