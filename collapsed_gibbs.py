@@ -166,6 +166,7 @@ class CGSampler:
         Returns:
             :float or np.ndarray: transformed sample(s)
         '''
+        
         cdf = (np.array(samples).T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
         new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
         if len(new_samples) == 1:
@@ -399,11 +400,11 @@ class SE_Sampler:
             self.glob_m_max = glob_m_max
         
         if upper_bounds is None:
-            self.upper_bounds = np.array([x*1.01 if x > 0 else x*0.99 for x in self.glob_m_max])
+            self.upper_bounds = np.array([x*(1+1e-9) if x > 0 else x*(1-1e-9) for x in self.glob_m_max])
         else:
             self.upper_bounds = upper_bounds
         if lower_bounds is None:
-            self.lower_bounds = np.array([x*0.99 if x > 0 else x*1.01 for x in self.glob_m_min])
+            self.lower_bounds = np.array([x*(1-1e-9) if x > 0 else x*(1+1e-9) for x in self.glob_m_min])
         else:
             self.lower_bounds = lower_bounds
         
@@ -421,7 +422,7 @@ class SE_Sampler:
         # DP parameters
         self.alpha0 = alpha0
         # Student-t parameters
-        self.L  = (np.std(self.mass_samples, axis = 0)/3.)**2*np.identity(self.dim)
+        self.L  = (np.std(self.mass_samples, axis = 0)/9.)**2*np.identity(self.dim)
         self.nu  = np.max([a,self.dim])
         self.k  = V
         self.mu = np.atleast_2d(np.mean(self.mass_samples, axis = 0))
@@ -684,9 +685,10 @@ class SE_Sampler:
 #        ax  = fig.add_subplot(111)
 #        ax.hist(self.initial_samples, bins = int(np.sqrt(len(self.initial_samples))), histtype = 'step', density = True)
         prob = []
-        for ai in gridpoints:
+        for i, ai in enumerate(gridpoints):
             a = self.transform([ai])
             #FIXME: scrivere log_norm in cython
+            print('\rGrid evaluation: {0}/{1}'.format(i+1, n_points**self.dim), end = '')
             logsum = np.sum([log_norm(par,0, 1) for par in a])
             prob.append([logsumexp([log_norm(a, component['mean'], component['cov']) + np.log(component['weight']) for component in sample.values()]) - logsum for sample in self.mixture_samples])
         prob = np.array(prob).reshape([n_points for _ in range(self.dim)] + [self.n_draws])
@@ -874,6 +876,9 @@ class MF_Sampler():
         self.n_parallel_threads = n_parallel_threads
         self.alpha_samples = []
         self.ncheck = ncheck
+        self.points = [np.linspace(l, u, n_points) for l, u in zip(self.lower_bounds, self.upper_bounds)]
+        self.log_vol_el = np.sum([np.log(v[1]-v[0]) for v in points])
+        self.gridpoints = np.array(list(itertools.product(*points)))
         
         self.p = Pool(n_parallel_threads)
         
@@ -923,7 +928,7 @@ class MF_Sampler():
         '''
         if cluster_id == "new":
             events = []
-            return -np.logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]), -np.logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)])
+            return -logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]), -logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)])
         else:
             events = [self.posterior_draws[i] for i in state['ev_in_cl'][cluster_id]]
         n = len(events)
@@ -933,10 +938,10 @@ class MF_Sampler():
         return logL_N - logL_D, logL_N
 
     def log_numerical_predictive(self, events, t_min, t_max, sigma_min, sigma_max):
-        logN_cnst = compute_norm_const(0, 1, events) + np.logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]) + np.log(sigma_max - sigma_min)*self.dim*(self.dim + 1)/2.
+        logN_cnst = compute_norm_const(0, 1, events) + logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]) + np.log(sigma_max - sigma_min)*self.dim*(self.dim + 1)/2.
         bounds = [[tmin, tmax] for tmin, tmax in zip(t_min, t_max)] + [[sigma_min, sigma_max] for _ in range(self.dim*(self.dim + 1)/2.)]
         #FIXME: scrivere integrand per n dimensioni
-        I, dI, d = nquad(integrand, bounds, args = [events, t_min, t_max, sigma_min, sigma_max, logN_cnst])
+        I, dI, d = nquad(integrand, bounds, args = [events, logN_cnst, self.dim])
         return np.log(I) + logN_cnst
     
     def cluster_assignment_distribution(self, data_id, state):
@@ -1066,8 +1071,7 @@ class MF_Sampler():
         components = {}
         for i, cid in enumerate(state['cluster_ids_']):
             events = [self.posterior_draws[j] for j in state['ev_in_cl'][cid]]
-            #FIXME: Scrivere sample_point per ndim
-            m, s = sample_point(events, self.t_min, self.t_max, self.sigma_min, self.sigma_max, burnin = 1000)
+            m, s = sample_point(events, self.t_min, self.t_max, self.sigma_min, self.sigma_max, self.n_dim, burnin = 1000)
             components[i] = {'mean': m, 'sigma': s, 'weight': weights[i]}
         self.mixture_samples.append(components)
     
@@ -1082,31 +1086,29 @@ class MF_Sampler():
         print('------------------------')
         return
 
-    def postprocess(self):
+    def postprocess(self, n_points = 30):
         """
         Plots samples [x] for each event in separate plots along with inferred distribution and saves draws.
         """
         
-        app  = np.linspace(self.m_min*1.1, self.m_max_plot, 1000)
-        da = app[1]-app[0]
-        percentiles = [50, 5,16, 84, 95]
+#        app  = np.linspace(self.m_min*1.1, self.m_max_plot, 1000)
+#        da = app[1]-app[0]
+        percentiles = [50]#[50, 5,16, 84, 95]
         
         p = {}
         
-        fig = plt.figure()
-        fig.suptitle('Observed mass function')
-        ax  = fig.add_subplot(111)
-        if self.true_masses is not None:
-            truths = np.genfromtxt(self.true_masses, names = True)
-            ax.hist(truths['m'], bins = int(np.sqrt(len(truths['m']))), histtype = 'step', density = True)
         prob = []
-        for ai in app:
-            a = self.transform(ai)
-            prob.append([logsumexp([log_norm(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_norm(a, 0, 1) for sample in self.mixture_samples])
-        
+        for i, ai in enumerate(self.gridpoints):
+            a = self.transform([ai])
+            #FIXME: scrivere log_norm in cython
+            print('\rGrid evaluation: {0}/{1}'.format(i+1, n_points**self.dim), end = '')
+            logsum = np.sum([log_norm(par,0, 1) for par in a])
+            prob.append([logsumexp([log_norm(a, component['mean'], component['cov']) + np.log(component['weight']) for component in sample.values()]) - logsum for sample in self.mixture_samples])
+        prob = np.array(prob).reshape([n_points for _ in range(self.dim)] + [self.n_draws])
+
         log_draws_interp = []
-        for pr in np.array(prob).T:
-            log_draws_interp.append(interp1d(app, pr - logsumexp(pr + np.log(da))))
+        for i in range(self.n_draws):
+            log_draws_interp.append(RegularGridInterpolator(self.points, prob[...,i] - logsumexp(prob[...,i] + self.log_vol_el)))
         
         name = self.output_events + '/posterior_functions_mf_'
         extension ='.pkl'
@@ -1120,34 +1122,28 @@ class MF_Sampler():
         picklefile.close()
         
         for perc in percentiles:
-            p[perc] = np.percentile(prob, perc, axis = 1)
-        normalisation = np.sum(np.exp(p[50])*da)
+            p[perc] = np.percentile(prob, perc, axis = -1)
+        normalisation = logsumexp(p[50] + log_vol_el)
         for perc in percentiles:
-            p[perc] = p[perc] - np.log(normalisation)
+            p[perc] = p[perc] - normalisation
             
         self.sample_probs = prob
         self.median_mf = np.array(p[50])
         names = ['m'] + [str(perc) for perc in percentiles]
-        np.savetxt(self.output_events + '/log_rec_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
+#        np.savetxt(self.output_events + '/log_rec_obs_prob_mf.txt', np.array([app, p[50], p[5], p[16], p[84], p[95]]).T, header = ' '.join(names))
+        picklefile = open(self.output_recprob + '/log_rec_prob_mf.pkl', 'wb')
+        pickle.dump(RegularGridInterpolator(self.points, p[50]), picklefile)
+        picklefile.close()
+
         for perc in percentiles:
-            p[perc] = np.exp(np.percentile(prob, perc, axis = 1))
+            p[perc] = np.exp(np.percentile(prob, perc, axis = -1))
         for perc in percentiles:
-            p[perc] = p[perc]/normalisation
+            p[perc] = p[perc]/np.exp(normalisation)
         
-        ax.fill_between(app, p[95], p[5], color = 'lightgreen', alpha = 0.5)
-        ax.fill_between(app, p[84], p[16], color = 'aqua', alpha = 0.5)
-        ax.plot(app, p[50], marker = '', color = 'r')
-        if self.injected_density is not None:
-            norm = np.sum([self.injected_density(a)*(app[1]-app[0]) for a in app])
-            density = np.array([self.injected_density(a)/norm for a in app])
-            ax.plot(app, density, color = 'm', marker = '', linewidth = 0.7)
-        ax.set_xlabel('$M\ [M_\\odot]$')
-        ax.set_ylabel('$p(M)$')
-        ax.set_xlim(self.m_min*1.1, self.m_max_plot)
-        plt.savefig(self.output_events + '/obs_mass_function.pdf', bbox_inches = 'tight')
-        ax.set_yscale('log')
-        ax.set_ylim(np.min(p[50]))
-        plt.savefig(self.output_events + '/log_obs_mass_function.pdf', bbox_inches = 'tight')
+        samples_to_plot = MH_single_event(RegularGridInterpolator(points, p[50]), self.upper_bounds, self.lower_bounds, len(self.mass_samples))
+        c = corner(self.initial_samples, color = 'orange', labels = self.var_names, hist_kwargs={'density':True})
+        c = corner(samples_to_plot, fig = c, color = 'blue', labels = self.var_names, hist_kwargs={'density':True})
+        c.savefig(self.output_pltevents + '/obs_mass_function.pdf', bbox_inches = 'tight')
         
         name = self.output_events + '/posterior_mixtures_mf_'
         extension ='.pkl'
@@ -1168,10 +1164,11 @@ class MF_Sampler():
         ax = fig.add_subplot(111)
         ax.hist(self.alpha_samples, bins = int(np.sqrt(len(self.alpha_samples))))
         fig.savefig(self.output_events+'/gamma_mf.pdf', bbox_inches='tight')
-        inj = np.array([self.injected_density(ai)/norm for ai in app])
-        ent = js(p[50], inj)
-        print('Jensen-Shannon distance: {0} nats'.format(ent))
-        np.savetxt(self.output_events + '/relative_entropy.txt', np.array([ent]))
+        #FIXME: JS multidimensionale? (Vedi sopra)
+#        inj = np.array([self.injected_density(ai)/norm for ai in app])
+#        ent = js(p[50], inj)
+#        print('Jensen-Shannon distance: {0} nats'.format(ent))
+#        np.savetxt(self.output_events + '/relative_entropy.txt', np.array([ent]))
         
     
     def run(self):
@@ -1196,16 +1193,17 @@ class MF_Sampler():
         except:
             samps = []
         
-        app  = np.linspace(self.m_min*1.1, self.m_max_plot, 1000)
-        da = app[1]-app[0]
         prob = []
-        for ai in app:
-            a = self.transform(ai)
-            prob.append([logsumexp([log_norm(a, component['mean'], component['sigma']) for component in sample.values()], b = [component['weight'] for component in sample.values()]) - log_norm(a, 0, 1) for sample in self.mixture_samples[-self.ncheck:]])
+        for ai in self.gridpoints:
+            a = self.transform([ai])
+            #FIXME: scrivere log_norm in cython
+            logsum = np.sum([log_norm(par,0, 1) for par in a])
+            prob.append([logsumexp([log_norm(a, component['mean'], component['cov']) + np.log(component['weight']) for component in sample.values()]) - logsum for sample in self.mixture_samples[-self.ncheck:]])
+        prob = np.array(prob).reshape([n_points for _ in range(self.dim)] + [self.n_draws])
 
         log_draws_interp = []
-        for pr in np.array(prob).T:
-            log_draws_interp.append(interp1d(app, pr - logsumexp(pr + np.log(da))))
+        for i in range(self.n_draws):
+            log_draws_interp.append(RegularGridInterpolator(self.points, prob[...,i] - logsumexp(prob[...,i] + self.log_vol_el)))
         
         samps = samps + log_draws_interp
         picklefile = open(self.output_events + '/checkpoint.pkl', 'wb')
