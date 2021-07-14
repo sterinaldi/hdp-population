@@ -128,11 +128,11 @@ class CGSampler:
         self.m_max   = np.maximum(m_max, sample_max)
         self.m_max_plot = m_max
         # probit
-        self.upper_bounds = np.array([x if not x == 0 else -1e-9 for x in np.array([x*(1+1e-9) if x > 0 else x*(1-1e-9) for x in self.m_max])])
-        self.lower_bounds = np.array([x if not x == 0 else 1e-9 for x in np.array([x*(1-1e-9) if x > 0 else x*(1+1e-9) for x in self.m_min])])
+        self.upper_bounds = np.array([x if not x == 0 else -1e-4 for x in np.array([x*(1+1e-4) if x > 0 else x*(1-1e-4) for x in self.m_max])])
+        self.lower_bounds = np.array([x if not x == 0 else 1e-4 for x in np.array([x*(1-1e-4) if x > 0 else x*(1+1e-4) for x in self.m_min])])
         self.transformed_events = [self.transform(ev) for ev in events]
-        self.t_min = self.transform(self.m_min)
-        self.t_max = self.transform(self.m_max)
+        self.t_min = self.transform([self.m_min])
+        self.t_max = self.transform([self.m_max])
         # DP
         self.alpha0 = alpha0
         self.gamma0 = gamma0
@@ -270,17 +270,17 @@ class CGSampler:
                        m_max = self.m_max,
                        t_min = self.t_min,
                        t_max = self.t_max,
-                       verbose = self.verbose,
                        output_folder = self.mf_folder,
                        initial_cluster_number = min([self.icn, len(self.posterior_functions_events)]),
                        injected_density = self.injected_density,
                        true_masses = self.true_masses,
                        sigma_min = np.std(flattened_transf_ev)/16.,
                        sigma_max = np.std(flattened_transf_ev)/3.,
-                       m_max_plot = self.m_max_plot,
                        n_parallel_threads = self.n_parallel_threads,
                        transformed = True,
-                       n_samp_to_plot = self.n_samp_to_plot
+                       n_samp_to_plot = self.n_samp_to_plot,
+                       upper_bounds = self.upper_bounds,
+                       lower_bounds = self.lower_bounds
                        )
         sampler.run()
     
@@ -847,7 +847,8 @@ class MF_Sampler():
                        ncheck = 5,
                        transformed = False,
                        var_names = None,
-                       n_samp_to_plot = 2000
+                       n_samp_to_plot = 2000,
+                       n_points = 30 # np.linspace(min, max, n_points) for each variable
                        ):
                        
         self.burnin  = burnin
@@ -883,8 +884,8 @@ class MF_Sampler():
         self.alpha_samples = []
         self.ncheck = ncheck
         self.points = [np.linspace(l, u, n_points) for l, u in zip(self.lower_bounds, self.upper_bounds)]
-        self.log_vol_el = np.sum([np.log(v[1]-v[0]) for v in points])
-        self.gridpoints = np.array(list(itertools.product(*points)))
+        self.log_vol_el = np.sum([np.log(v[1]-v[0]) for v in self.points])
+        self.gridpoints = np.array(list(itertools.product(*self.points)))
         self.dim = dim
         self.n_samp_to_plot = n_samp_to_plot
         self.p = Pool(n_parallel_threads)
@@ -945,8 +946,8 @@ class MF_Sampler():
         return logL_N - logL_D, logL_N
 
     def log_numerical_predictive(self, events, t_min, t_max, sigma_min, sigma_max):
-        logN_cnst = compute_norm_const(0, 1, events) + logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]) + np.log(sigma_max - sigma_min)*self.dim*(self.dim + 1)/2.
-        bounds = [[tmin, tmax] for tmin, tmax in zip(t_min, t_max)] + [[sigma_min, sigma_max] for _ in range(self.dim*(self.dim + 1)/2.)]
+        logN_cnst = compute_norm_const(np.zeros(self.dim), np.identity(self.dim), events) + logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]) + np.log(sigma_max - sigma_min)*self.dim*(self.dim + 1)/2.
+        bounds = [[tmin, tmax] for tmin, tmax in zip(t_min, t_max)] + [[sigma_min, sigma_max] for _ in range(int(self.dim*(self.dim + 1)/2.))]
         I, dI, d = nquad(integrand, bounds, args = [events, logN_cnst, self.dim])
         return np.log(I) + logN_cnst
     

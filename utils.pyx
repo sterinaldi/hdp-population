@@ -26,8 +26,12 @@ cdef np.ndarray make_sym_matrix(int n, np.ndarray vals):
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-cdef inline double _log_norm(np.ndarray x, np.ndarray x0, np.ndarray sigma):
-    return mn(mean = x0, cov = sigma).logpdf(x)
+cdef double _log_norm(np.ndarray x, np.ndarray x0, np.ndarray sigma):
+    try:
+        logP = mn(mean = x0, cov = sigma).logpdf(x)
+    except:
+        logP = -np.inf
+    return logP
     #cdef np.ndarray diff = x-x0
     #cdef double D = det(sigma)
     #return -np.dot(diff.T, np.dot(inv(sigma), diff)) -n*0.5*LOGSQRT2 -0.5*log(D)
@@ -72,7 +76,11 @@ cdef double _integrand(np.ndarray values, list events, double logN_cnst, int dim
         logprob += _log_prob_mixture(mu, sigma, ev)
     return exp(logprob - logN_cnst)
 
-def integrand(np.ndarray values, list events, double logN_cnst, int dim):
+def integrand(*args):
+    values = np.array([v for v in args[:-3]])
+    cdef list events = args[-3]
+    cdef double logN_cnst = args[-2]
+    cdef int dim = args[-1]
     return _integrand(values, events, logN_cnst, dim)
 
 @cython.boundscheck(False)
