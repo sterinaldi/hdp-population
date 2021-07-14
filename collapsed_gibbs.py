@@ -32,7 +32,7 @@ from ray.util.multiprocessing import Pool
 
 from numba import jit
 
-from utils import integrand, compute_norm_const, log_norm
+from utils import integrand, compute_norm_const, log_norm, scalar_log_norm
 
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
@@ -97,13 +97,13 @@ class CGSampler:
         sampler.run()
     '''
     def __init__(self, events,
+                       m_min,
+                       m_max,
                        samp_settings, # burnin, draws, step (list)
                        samp_settings_ev = None,
                        alpha0 = 1,
                        gamma0 = 1,
-                       hyperpriors_ev = [1,1/4.], #a, V
-                       m_min = 5,
-                       m_max = 70,
+                       hyperpriors_ev = [1,1], #a, V
                        verbose = True,
                        output_folder = './',
                        initial_cluster_number = 5.,
@@ -112,7 +112,8 @@ class CGSampler:
                        injected_density = None,
                        true_masses = None,
                        names = None,
-                       var_names = None
+                       var_names = None,
+                       n_samp_to_plot = 2000
                        ):
         
         self.burnin_mf, self.n_draws_mf, self.step_mf = samp_settings
@@ -123,8 +124,8 @@ class CGSampler:
         self.events = events
         sample_min = np.min([np.min(a, axis = 0) for a in self.events], axis = 0)
         sample_max = np.max([np.max(a, axis = 0) for a in self.events], axis = 0)
-        self.m_min   = min([m_min, sample_min], axis = 0)
-        self.m_max   = max([m_max, sample_max], axis = 0)
+        self.m_min   = np.minimum(m_min, sample_min)
+        self.m_max   = np.maximum(m_max, sample_max)
         self.m_max_plot = m_max
         # probit
         self.upper_bounds = np.array([x if not x == 0 else -1e-9 for x in np.array([x*(1+1e-9) if x > 0 else x*(1-1e-9) for x in self.m_max])])
@@ -136,11 +137,10 @@ class CGSampler:
         self.alpha0 = alpha0
         self.gamma0 = gamma0
         # student-t
-        if hyperpars_ev is not None:
+        if hyperpriors_ev is not None:
             self.a_ev, self.V_ev = hyperpriors_ev
         else:
-            self.a_ev, self.V_ev = [1,1/4.]
-        self.sigma_max = sigma_max
+            self.a_ev, self.V_ev = [1,1]
         # miscellanea
         self.output_folder = output_folder
         self.icn = initial_cluster_number
@@ -152,6 +152,8 @@ class CGSampler:
         self.true_masses = true_masses
         self.output_recprob = self.output_folder + '/reconstructed_events/pickle/'
         self.dim = len(self.events[-1][-1])
+        self.n_samp_to_plot = n_samp_to_plot
+        self.var_names = var_names
         if names is not None:
             self.names = names
         else:
@@ -180,28 +182,28 @@ class CGSampler:
         event_samplers = []
         for i, (ev, t_ev) in enumerate(zip(self.events[marker:marker+self.n_parallel_threads], self.transformed_events[marker:marker+self.n_parallel_threads])):
             event_samplers.append(SE_Sampler.remote(
-                                            t_ev,
-                                            self.names[marker+i],
-                                            self.burnin_ev,
-                                            self.n_draws_ev,
-                                            self.step_ev,
-                                            ev,
-                                            self.alpha0,
-                                            self.a_ev,
-                                            self.V_ev,
-                                            np.min(ev, axis = 0),
-                                            np.max(ev, axis = 0),
-                                            np.min(t_ev, axis = 0),
-                                            np.max(t_ev, axis = 0),
-                                            self.m_max,
-                                            self.m_min,
-                                            self.upper_bounds,
-                                            self.lower_bounds,
-                                            self.output_folder,
-                                            self.verbose,
-                                            self.icn,
-                                            transformed = True,
-                                            var_names = self.var_names
+                                            mass_samples           = t_ev,
+                                            event_id               = self.names[marker+i],
+                                            burnin                 = self.burnin_ev,
+                                            n_draws                = self.n_draws_ev,
+                                            step                   = self.step_ev,
+                                            m_min                  = np.min(ev, axis = 0),
+                                            m_max                  = np.max(ev, axis = 0),
+                                            t_min                  = np.min(t_ev, axis = 0),
+                                            t_max                  = np.max(t_ev, axis = 0),
+                                            real_masses            = ev,
+                                            alpha0                 = self.alpha0,
+                                            a                      = self.a_ev,
+                                            V                      = self.V_ev,
+                                            glob_m_max             = self.m_max,
+                                            glob_m_min             = self.m_min,
+                                            upper_bounds           = self.upper_bounds,
+                                            lower_bounds           = self.lower_bounds,
+                                            output_folder          = self.output_folder,
+                                            verbose                = self.verbose,
+                                            initial_cluster_number = self.icn,
+                                            transformed            = True,
+                                            var_names              = self.var_names
                                             ))
         return event_samplers
         
@@ -259,6 +261,7 @@ class CGSampler:
             os.mkdir(self.mf_folder)
         flattened_transf_ev = np.array([x for ev in self.transformed_events for x in ev])
         sampler = MF_Sampler(self.posterior_functions_events,
+                       self.dim,
                        self.burnin_mf,
                        self.n_draws_mf,
                        self.step_mf,
@@ -276,7 +279,8 @@ class CGSampler:
                        sigma_max = np.std(flattened_transf_ev)/3.,
                        m_max_plot = self.m_max_plot,
                        n_parallel_threads = self.n_parallel_threads,
-                       transformed = True
+                       transformed = True,
+                       n_samp_to_plot = self.n_samp_to_plot
                        )
         sampler.run()
     
@@ -320,7 +324,7 @@ def my_student_t(df, t, mu, sigma, dim, s2max = np.inf):
 
     return float(A - B - C - D + E)
     
-#@ray.remote
+@ray.remote
 class SE_Sampler:
     '''
     Class to reconstruct a posterior density function given samples.
@@ -689,7 +693,7 @@ class SE_Sampler:
             a = self.transform([ai])
             #FIXME: scrivere log_norm in cython
             print('\rGrid evaluation: {0}/{1}'.format(i+1, n_points**self.dim), end = '')
-            logsum = np.sum([log_norm(par,0, 1) for par in a])
+            logsum = np.sum([scalar_log_norm(par,0, 1) for par in a])
             prob.append([logsumexp([log_norm(a, component['mean'], component['cov']) + np.log(component['weight']) for component in sample.values()]) - logsum for sample in self.mixture_samples])
         prob = np.array(prob).reshape([n_points for _ in range(self.dim)] + [self.n_draws])
         
@@ -822,6 +826,7 @@ class MF_Sampler():
         
     '''
     def __init__(self, posterior_functions_events,
+                       dim,
                        burnin,
                        n_draws,
                        step,
@@ -841,7 +846,8 @@ class MF_Sampler():
                        n_parallel_threads = 1,
                        ncheck = 5,
                        transformed = False,
-                       var_names = None
+                       var_names = None,
+                       n_samp_to_plot = 2000
                        ):
                        
         self.burnin  = burnin
@@ -879,7 +885,8 @@ class MF_Sampler():
         self.points = [np.linspace(l, u, n_points) for l, u in zip(self.lower_bounds, self.upper_bounds)]
         self.log_vol_el = np.sum([np.log(v[1]-v[0]) for v in points])
         self.gridpoints = np.array(list(itertools.product(*points)))
-        
+        self.dim = dim
+        self.n_samp_to_plot = n_samp_to_plot
         self.p = Pool(n_parallel_threads)
         
     def transform(self, samples):
@@ -1101,7 +1108,7 @@ class MF_Sampler():
             a = self.transform([ai])
             #FIXME: scrivere log_norm in cython
             print('\rGrid evaluation: {0}/{1}'.format(i+1, n_points**self.dim), end = '')
-            logsum = np.sum([log_norm(par,0, 1) for par in a])
+            logsum = np.sum([scalar_log_norm(par,0, 1) for par in a])
             prob.append([logsumexp([log_norm(a, component['mean'], component['cov']) + np.log(component['weight']) for component in sample.values()]) - logsum for sample in self.mixture_samples])
         prob = np.array(prob).reshape([n_points for _ in range(self.dim)] + [self.n_draws])
 
@@ -1139,9 +1146,10 @@ class MF_Sampler():
         for perc in percentiles:
             p[perc] = p[perc]/np.exp(normalisation)
         
-        samples_to_plot = MH_single_event(RegularGridInterpolator(points, p[50]), self.upper_bounds, self.lower_bounds, len(self.mass_samples))
-        c = corner(self.initial_samples, color = 'orange', labels = self.var_names, hist_kwargs={'density':True})
-        c = corner(samples_to_plot, fig = c, color = 'blue', labels = self.var_names, hist_kwargs={'density':True})
+        samples_to_plot = MH_single_event(RegularGridInterpolator(points, p[50]), self.upper_bounds, self.lower_bounds, self.n_samp_to_plot)
+        c = corner(samples_to_plot, color = 'blue', labels = self.var_names, hist_kwargs={'density':True})
+        if self.true_masses is not None:
+            c = corner(self.true_masses, fig = c, color = 'orange', labels = self.var_names, hist_kwargs={'density':True})
         c.savefig(self.output_pltevents + '/obs_mass_function.pdf', bbox_inches = 'tight')
         
         name = self.output_events + '/posterior_mixtures_mf_'
