@@ -30,9 +30,9 @@ cdef inline double _log_norm(np.ndarray x, np.ndarray x0, np.ndarray sigma, int 
     return -np.dot(diff.T, np.dot(inv(sigma), diff)) -n*0.5*LOGSQRT2 -0.5*log(det(sigma))
 
 
-#solo un wrapper per python
+#solo un alias per scipy.stats.multivariate_normal
 def log_norm(np.ndarray x, np.ndarray x0, np.ndarray sigma):
-    return mn(mean = x0, )
+    return mn(mean = x0, cov = sigma).logpdf(x)
     #return _log_norm(x, x0, sigma, n)
 
 @cython.boundscheck(False)
