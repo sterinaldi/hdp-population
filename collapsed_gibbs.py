@@ -32,7 +32,7 @@ from ray.util.multiprocessing import Pool
 
 from numba import jit
 
-from utils import integrand, compute_norm_const#, log_norm
+from utils import integrand, compute_norm_const, log_norm
 
 """
 Implemented as in https://dp.tdhopper.com/collapsed-gibbs/
@@ -127,8 +127,8 @@ class CGSampler:
         self.m_max   = max([m_max, sample_max], axis = 0)
         self.m_max_plot = m_max
         # probit
-        self.upper_bounds = np.array([x*1.0001 if x > 0 else x*0.9999 for x in self.m_max])
-        self.lower_bounds = np.array([x*0.9999 if x > 0 else x*1.0001 for x in self.m_min])
+        self.upper_bounds = np.array([x if not x == 0 else -1e-9 for x in np.array([x*(1+1e-9) if x > 0 else x*(1-1e-9) for x in self.m_max])])
+        self.lower_bounds = np.array([x if not x == 0 else 1e-9 for x in np.array([x*(1-1e-9) if x > 0 else x*(1+1e-9) for x in self.m_min])])
         self.transformed_events = [self.transform(ev) for ev in events]
         self.t_min = self.transform(self.m_min)
         self.t_max = self.transform(self.m_max)
@@ -167,7 +167,7 @@ class CGSampler:
             :float or np.ndarray: transformed sample(s)
         '''
         
-        cdf = (np.array(samples).T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
+        cdf = (np.array(samples).T - np.atleast_2d([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
         new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
         if len(new_samples) == 1:
             return new_samples[0]
@@ -400,11 +400,11 @@ class SE_Sampler:
             self.glob_m_max = glob_m_max
         
         if upper_bounds is None:
-            self.upper_bounds = np.array([x*(1+1e-9) if x > 0 else x*(1-1e-9) for x in self.glob_m_max])
+            self.upper_bounds = np.array([x if not x == 0 else -1e-9 for x in np.array([x*(1+1e-9) if x > 0 else x*(1-1e-9) for x in self.glob_m_max])])
         else:
             self.upper_bounds = upper_bounds
         if lower_bounds is None:
-            self.lower_bounds = np.array([x*(1-1e-9) if x > 0 else x*(1+1e-9) for x in self.glob_m_min])
+            self.lower_bounds = np.array([x if not x == 0 else 1e-9 for x in np.array([x*(1-1e-9) if x > 0 else x*(1+1e-9) for x in self.glob_m_min])])
         else:
             self.lower_bounds = lower_bounds
         
@@ -891,7 +891,7 @@ class MF_Sampler():
         Returns:
             :float or np.ndarray: transformed sample(s)
         '''
-        cdf = (np.array(samples).T - np.array([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
+        cdf = (np.array(samples).T - np.atleast_2d([self.lower_bounds]).T)/np.array([self.upper_bounds - self.lower_bounds]).T
         new_samples = np.sqrt(2)*erfinv(2*cdf-1).T
         if len(new_samples) == 1:
             return new_samples[0]
@@ -940,7 +940,6 @@ class MF_Sampler():
     def log_numerical_predictive(self, events, t_min, t_max, sigma_min, sigma_max):
         logN_cnst = compute_norm_const(0, 1, events) + logsumexp([np.log(tmax - tmin) for tmin, tmax in zip(t_min, t_max)]) + np.log(sigma_max - sigma_min)*self.dim*(self.dim + 1)/2.
         bounds = [[tmin, tmax] for tmin, tmax in zip(t_min, t_max)] + [[sigma_min, sigma_max] for _ in range(self.dim*(self.dim + 1)/2.)]
-        #FIXME: scrivere integrand per n dimensioni
         I, dI, d = nquad(integrand, bounds, args = [events, logN_cnst, self.dim])
         return np.log(I) + logN_cnst
     
@@ -1225,6 +1224,3 @@ class MF_Sampler():
                 self.checkpoint()
         print('\n', end = '')
         
-
-def log_norm(x, mu, cov):
-    return mn(mean = mu, cov = cov).logpdf(x)
